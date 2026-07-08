@@ -301,6 +301,7 @@ function BatchDetail({
                 qualif={qualif}
                 setQualif={setQualif}
                 totalNet={totalNet}
+                onLogEvent={(q) => onLogEvent(stock.batch_id, stock.strain, q)}
               />
             )}
             {section === "history" && <HistorySection movements={movements} />}
