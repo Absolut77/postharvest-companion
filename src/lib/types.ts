@@ -2,7 +2,7 @@ export type Direction = "IN" | "OUT";
 
 export type Movement = {
   id: string;
-  event_date: string; // ISO date YYYY-MM-DD
+  event_date: string;
   initials: string;
   strain: string;
   batch_id: string;
@@ -15,6 +15,14 @@ export type Movement = {
   detail: string;
   sku: string;
   comment: string;
+  destination: string;
+  comment1: string;
+  comment2: string;
+  adjustment_validation: boolean;
+  stamp_used: string;
+  stamp_type: string;
+  additional_comments: string;
+  elevated_update: boolean;
   created_at?: string;
   updated_at?: string;
 };
