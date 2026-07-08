@@ -462,7 +462,7 @@ function InventorySection({
             <tbody>
               {b.inEntries.map((m, i) => {
                 const g = Number(m.quantity_g);
-                const eb = decomposeBags([g]);
+                const eb = decomposeBags([{ grams: g, units: Number(m.units) }]);
                 return (
                   <tr key={m.id} className={cn("border-b", i % 2 && "bg-muted/20")}>
                     <td className="px-3 py-1.5 font-mono text-xs">#{i + 1}</td>
