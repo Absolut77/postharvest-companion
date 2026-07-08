@@ -1,6 +1,6 @@
 export const DIRECTIONS = ["IN", "OUT"] as const;
 
-export const PRODUCT_FORMATS = ["Bulk", "Sample", "Master Case", "Units"];
+export const PRODUCT_FORMATS = ["Bulk", "Sample", "Pre-roll", "Master Case", "Units", "Jar", "Pouch"];
 
 export const PRODUCT_TYPES = [
   "Flower",
@@ -16,6 +16,29 @@ export const PRODUCT_TYPES = [
   "Pre-roll 3.5g",
   "Trim",
 ];
+
+// Formats packagés → calcul auto Qté ↔ Unités via ce mapping (g / unité).
+// Le poids par unité est déduit du Product Type quand possible ("Pre-roll 0.5g" → 0.5).
+export const PACKAGED_FORMATS = new Set(["Pre-roll", "Master Case", "Units", "Jar", "Pouch"]);
+
+export function inferGramsPerUnit(productType: string): number | null {
+  const m = productType.match(/(\d+(?:\.\d+)?)\s*g/i);
+  return m ? parseFloat(m[1]) : null;
+}
+
+export const DESTINATIONS = [
+  "Cultivation",
+  "Packaging",
+  "Sampling",
+  "Rework",
+  "Destruction",
+  "Shipment",
+  "External",
+  "Lab",
+  "Retention",
+];
+
+export const STAMP_TYPES = ["Fédéral", "Provincial", "N/A"];
 
 export const REASONS_IN = [
   "In from Cultivation",
