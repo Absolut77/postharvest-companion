@@ -180,47 +180,46 @@ function BatchDetail({
   movements: Movement[];
 }) {
   const [section, setSection] = useState<SectionId>("inventory");
-  const [category, setCategory] = useState<"__all__" | Category>("__all__");
+  const [qualif, setQualif] = useState<"__all__" | Qualification>("__all__");
 
-  // Hooks TOUJOURS appelés dans le même ordre — ne jamais mettre un early return au-dessus.
-  const byCategory = useMemo(() => {
-    const map = new Map<Category, { sacs: Movement[]; totalG: number; totalU: number }>();
-    for (const c of CATEGORIES) map.set(c, { sacs: [], totalG: 0, totalU: 0 });
+  // Hooks TOUJOURS appelés dans le même ordre.
+  const byQualif = useMemo(() => {
+    type Bucket = {
+      incomingEntries: number[]; // grammages des IN "In from Cultivation"
+      incomingG: number;
+      returnsG: number;          // Back from Packaging / Sampling / Rework
+      outsG: number;             // toutes les sorties
+      inEntries: Movement[];     // pour l'affichage détaillé
+    };
+    const map = new Map<Qualification, Bucket>();
+    for (const q of QUALIFICATIONS) {
+      map.set(q, { incomingEntries: [], incomingG: 0, returnsG: 0, outsG: 0, inEntries: [] });
+    }
 
-    let sampleOut = 0, sampleBack = 0;
     for (const m of movements) {
-      const isSample = /sampl|échantillon|echantillon/i.test(
-        (m.destination + " " + m.reason + " " + m.comment1 + " " + m.additional_comments)
-      );
-      if (isSample) {
-        if (m.direction === "OUT") sampleOut += Number(m.quantity_g);
-        else sampleBack += Number(m.quantity_g);
+      const q = detectQualification(m);
+      if (!q) continue;
+      const bucket = map.get(q)!;
+      const grams = Number(m.quantity_g);
+      if (m.direction === "IN") {
+        if (/in from cultivation/i.test(m.reason)) {
+          bucket.incomingEntries.push(grams);
+          bucket.incomingG += grams;
+          bucket.inEntries.push(m);
+        } else {
+          // Back from Packaging / Sampling / Rework / External
+          bucket.returnsG += grams;
+        }
+      } else {
+        bucket.outsG += grams;
       }
-    }
-    const retention = Math.max(0, sampleOut - sampleBack);
-    map.get("Rétention")!.totalG = retention;
-
-    for (const m of movements) {
-      if (m.direction !== "IN") continue;
-      const cat = categorize(m);
-      if (cat === "Rétention") continue;
-      const bucket = map.get(cat)!;
-      bucket.sacs.push(m);
-      bucket.totalG += Number(m.quantity_g);
-      bucket.totalU += Number(m.units);
-    }
-    for (const m of movements) {
-      if (m.direction !== "OUT") continue;
-      const cat = categorize(m);
-      if (cat === "Rétention" || cat === "Sample") continue;
-      const bucket = map.get(cat)!;
-      bucket.totalG -= Number(m.quantity_g);
-      bucket.totalU -= Number(m.units);
     }
     return map;
   }, [movements]);
 
-  const totalG = Array.from(byCategory.values()).reduce((s, v) => s + v.totalG, 0);
+  const totalNet = Array.from(byQualif.values()).reduce(
+    (s, v) => s + (v.incomingG + v.returnsG - v.outsG), 0,
+  );
 
   // Rendu conditionnel APRÈS que tous les hooks ont été déclarés.
   if (!stock) {
