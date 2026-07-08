@@ -243,7 +243,7 @@ function Journal() {
                   </td>
                   <td className={cn(
                     "px-2 py-1.5 sticky right-0",
-                    i % 2 === 0 ? "bg-background" : "bg-muted/60",
+                    i % 2 === 0 ? "bg-white" : "bg-slate-100",
                   )}>
                     <div className="flex gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(m)} title="Éditer">
