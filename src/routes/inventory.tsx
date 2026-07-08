@@ -6,14 +6,17 @@ import type { Movement } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent,
 } from "@/components/ui/dialog";
 import {
   AlertTriangle, Search, ArrowDown, ArrowUp, Package,
-  Camera, Wind, Droplets, History, Boxes, ChevronLeft, Layers,
+  Camera, Wind, Droplets, History, Boxes, ChevronLeft, Layers, PlusCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MovementModal } from "@/components/movement-modal";
+
 
 export const Route = createFileRoute("/inventory")({
   head: () => ({ meta: [{ title: "Bulk Inventory — PostHarvest Companion" }] }),
@@ -28,6 +31,14 @@ function Inventory() {
 
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [prefill, setPrefill] = useState<{ batch_id: string; strain: string; comment2: string } | null>(null);
+
+  const handleLogEvent = (batch_id: string, strain: string, qualif: string) => {
+    setPrefill({ batch_id, strain, comment2: qualif });
+    setModalOpen(true);
+  };
+
 
   const inventory = useMemo(() => computeInventory(movements), [movements]);
 
@@ -114,10 +125,20 @@ function Inventory() {
         onOpenChange={(v) => !v && setSelected(null)}
         stock={selectedBatch}
         movements={selectedMovements}
+        onLogEvent={handleLogEvent}
+      />
+
+      <MovementModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        editing={null}
+        movements={movements}
+        prefill={prefill ?? undefined}
       />
     </div>
   );
 }
+
 
 // ---------- Detail modal ----------
 
@@ -153,31 +174,47 @@ function detectQualification(m: Movement): Qualification | null {
 
 const BAG_SIZE_G = 1000;
 
+type BagEntry = { grams: number; units: number };
+
 type BagBreakdown = {
   fullBags: number;      // sacs de 1000g
   remainders: number[];  // restes (chaque entrée = un sac partiel)
 };
 
-function decomposeBags(entries: number[]): BagBreakdown {
+/**
+ * Décompose une liste d'entrées "In from Cultivation" en sacs.
+ * Règle métier du Log 2026 : la colonne Units = nombre total de sacs de l'entrée.
+ * Décomposition : (units - 1) sacs de 1000 g + 1 sac de (grams - (units-1)*1000) g.
+ * Si units ≤ 1, on considère toute la quantité comme un seul sac.
+ */
+function decomposeBags(entries: BagEntry[]): BagBreakdown {
   let full = 0;
   const remainders: number[] = [];
-  for (const q of entries) {
-    if (q <= 0) continue;
-    const f = Math.floor(q / BAG_SIZE_G);
-    const r = +(q - f * BAG_SIZE_G).toFixed(2);
-    full += f;
-    if (r > 0.001) remainders.push(r);
+  for (const { grams, units } of entries) {
+    if (grams <= 0) continue;
+    const u = Math.max(1, Math.round(units || 1));
+    if (u === 1) {
+      remainders.push(+grams.toFixed(2));
+      continue;
+    }
+    const fullThis = u - 1;
+    const rem = +(grams - fullThis * BAG_SIZE_G).toFixed(2);
+    full += fullThis;
+    if (rem > 0.001) remainders.push(rem);
+    else full += 1; // reste nul → le dernier sac est aussi plein
   }
   return { fullBags: full, remainders };
 }
 
+
 function BatchDetail({
-  open, onOpenChange, stock, movements,
+  open, onOpenChange, stock, movements, onLogEvent,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   stock: ReturnType<typeof computeInventory>[number] | null | undefined;
   movements: Movement[];
+  onLogEvent: (batchId: string, strain: string, qualif: Qualification) => void;
 }) {
   const [section, setSection] = useState<SectionId>("inventory");
   const [qualif, setQualif] = useState<"__all__" | Qualification>("__all__");
@@ -185,7 +222,7 @@ function BatchDetail({
   // Hooks TOUJOURS appelés dans le même ordre.
   const byQualif = useMemo(() => {
     type Bucket = {
-      incomingEntries: number[]; // grammages des IN "In from Cultivation"
+      incomingEntries: BagEntry[]; // {grams, units} des IN "In from Cultivation"
       incomingG: number;
       returnsG: number;          // Back from Packaging / Sampling / Rework
       outsG: number;             // toutes les sorties
@@ -201,9 +238,10 @@ function BatchDetail({
       if (!q) continue;
       const bucket = map.get(q)!;
       const grams = Number(m.quantity_g);
+      const units = Number(m.units);
       if (m.direction === "IN") {
         if (/in from cultivation/i.test(m.reason)) {
-          bucket.incomingEntries.push(grams);
+          bucket.incomingEntries.push({ grams, units });
           bucket.incomingG += grams;
           bucket.inEntries.push(m);
         } else {
@@ -284,6 +322,7 @@ function BatchDetail({
                 qualif={qualif}
                 setQualif={setQualif}
                 totalNet={totalNet}
+                onLogEvent={(q) => onLogEvent(stock.batch_id, stock.strain, q)}
               />
             )}
             {section === "history" && <HistorySection movements={movements} />}
@@ -298,10 +337,10 @@ function BatchDetail({
 }
 
 function InventorySection({
-  byQualif, qualif, setQualif, totalNet,
+  byQualif, qualif, setQualif, totalNet, onLogEvent,
 }: {
   byQualif: Map<Qualification, {
-    incomingEntries: number[];
+    incomingEntries: BagEntry[];
     incomingG: number;
     returnsG: number;
     outsG: number;
@@ -310,6 +349,7 @@ function InventorySection({
   qualif: "__all__" | Qualification;
   setQualif: (q: "__all__" | Qualification) => void;
   totalNet: number;
+  onLogEvent: (qualif: Qualification) => void;
 }) {
   if (qualif === "__all__") {
     const activeQualifs = QUALIFICATIONS.filter((q) => {
@@ -382,13 +422,16 @@ function InventorySection({
   const bags = decomposeBags(b.incomingEntries);
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <button
           onClick={() => setQualif("__all__")}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" /> Retour
         </button>
+        <Button size="sm" onClick={() => onLogEvent(qualif)} className="shadow">
+          <PlusCircle className="h-4 w-4 mr-1" /> Utiliser ces {qualif} — Loguer un événement
+        </Button>
       </div>
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-semibold">{qualif}</h3>
@@ -400,6 +443,7 @@ function InventorySection({
           )}>{net.toFixed(2)} g</div>
         </div>
       </div>
+
 
       <div className="grid grid-cols-3 gap-3">
         <Card className="p-3">
@@ -422,9 +466,11 @@ function InventorySection({
         </div>
         <div className="text-sm font-mono">{formatBags(bags)}</div>
         <div className="text-xs text-muted-foreground mt-2">
-          Basé sur les entrées "In from Cultivation" (sacs standards ~1000 g).
+          Décomposition dérivée de la colonne <strong>Units</strong> du Journal :
+          par entrée, (Units − 1) sacs pleins de 1000 g + 1 sac du reste.
         </div>
       </Card>
+
 
       {b.inEntries.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">
@@ -445,7 +491,7 @@ function InventorySection({
             <tbody>
               {b.inEntries.map((m, i) => {
                 const g = Number(m.quantity_g);
-                const eb = decomposeBags([g]);
+                const eb = decomposeBags([{ grams: g, units: Number(m.units) }]);
                 return (
                   <tr key={m.id} className={cn("border-b", i % 2 && "bg-muted/20")}>
                     <td className="px-3 py-1.5 font-mono text-xs">#{i + 1}</td>
