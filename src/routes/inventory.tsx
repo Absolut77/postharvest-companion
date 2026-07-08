@@ -125,10 +125,20 @@ function Inventory() {
         onOpenChange={(v) => !v && setSelected(null)}
         stock={selectedBatch}
         movements={selectedMovements}
+        onLogEvent={handleLogEvent}
+      />
+
+      <MovementModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        editing={null}
+        movements={movements}
+        prefill={prefill ?? undefined}
       />
     </div>
   );
 }
+
 
 // ---------- Detail modal ----------
 
