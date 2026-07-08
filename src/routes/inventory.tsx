@@ -423,7 +423,7 @@ function InventorySection({
 
   const b = byQualif.get(qualif)!;
   const net = b.incomingG + b.returnsG - b.outsG;
-  const bags = decomposeBags(b.incomingEntries);
+  const bags = decomposeBags(b.incomingEntries, bagSizeFor(qualif));
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
