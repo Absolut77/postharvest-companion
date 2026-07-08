@@ -298,90 +298,137 @@ function BatchDetail({
 }
 
 function InventorySection({
-  byCategory, category, setCategory, totalG,
+  byQualif, qualif, setQualif, totalNet,
 }: {
-  byCategory: Map<Category, { sacs: Movement[]; totalG: number; totalU: number }>;
-  category: "__all__" | Category;
-  setCategory: (c: "__all__" | Category) => void;
-  totalG: number;
+  byQualif: Map<Qualification, {
+    incomingEntries: number[];
+    incomingG: number;
+    returnsG: number;
+    outsG: number;
+    inEntries: Movement[];
+  }>;
+  qualif: "__all__" | Qualification;
+  setQualif: (q: "__all__" | Qualification) => void;
+  totalNet: number;
 }) {
-  if (category === "__all__") {
+  if (qualif === "__all__") {
+    const activeQualifs = QUALIFICATIONS.filter((q) => {
+      const b = byQualif.get(q)!;
+      return b.incomingG > 0 || b.returnsG > 0 || b.outsG > 0;
+    });
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xl font-semibold flex items-center gap-2">
-              <Layers className="h-5 w-5" /> Résumé de l'inventaire
+              <Layers className="h-5 w-5" /> Inventaire par qualification
             </h3>
-            <p className="text-xs text-muted-foreground">Cliquez sur une catégorie pour voir le détail.</p>
+            <p className="text-xs text-muted-foreground">
+              Stock net calculé depuis le Journal (In from Cultivation − sorties + retours).
+            </p>
           </div>
           <div className="text-right">
-            <div className="text-[10px] uppercase text-muted-foreground">Total catégorisé</div>
-            <div className="text-2xl font-mono font-bold">{totalG.toFixed(1)} g</div>
+            <div className="text-[10px] uppercase text-muted-foreground">Stock net total</div>
+            <div className="text-2xl font-mono font-bold">{totalNet.toFixed(1)} g</div>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {CATEGORIES.map((c) => {
-            const b = byCategory.get(c)!;
-            const count = c === "Rétention" ? (b.totalG > 0 ? 1 : 0) : b.sacs.length;
-            const empty = b.totalG <= 0.001 && count === 0;
-            return (
-              <button
-                key={c}
-                onClick={() => setCategory(c)}
-                disabled={empty}
-                className={cn(
-                  "text-left rounded-lg border p-3 hover:border-primary hover:shadow-sm transition",
-                  empty && "opacity-40 cursor-not-allowed",
-                )}
-              >
-                <div className="text-sm font-semibold">{c}</div>
-                <div className="mt-2 flex items-end justify-between">
-                  <div>
-                    <div className="text-[10px] uppercase text-muted-foreground">Sacs</div>
-                    <div className="text-xl font-mono font-bold">{count}</div>
+
+        {activeQualifs.length === 0 ? (
+          <Card className="p-6 text-center text-sm text-muted-foreground">
+            Aucune entrée "In from Cultivation" avec qualification pour ce lot.
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {activeQualifs.map((q) => {
+              const b = byQualif.get(q)!;
+              const net = b.incomingG + b.returnsG - b.outsG;
+              const bags = decomposeBags(b.incomingEntries);
+              const totalBags = bags.fullBags + bags.remainders.length;
+              return (
+                <button
+                  key={q}
+                  onClick={() => setQualif(q)}
+                  className={cn(
+                    "text-left rounded-lg border p-3 hover:border-primary hover:shadow-sm transition",
+                    net < 0 && "border-red-500/50 bg-red-500/5",
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-semibold">{q}</div>
+                    <div className={cn(
+                      "font-mono text-sm font-bold",
+                      net < 0 && "text-red-600",
+                    )}>
+                      {net.toFixed(1)} g
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase text-muted-foreground">Poids</div>
-                    <div className="font-mono text-sm">{b.totalG.toFixed(1)} g</div>
+                  <div className="text-xs text-muted-foreground">
+                    {totalBags} sac{totalBags > 1 ? "s" : ""} à l'entrée · reçu {b.incomingG.toFixed(1)} g
                   </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                  <div className="text-[11px] text-muted-foreground mt-1">
+                    {formatBags(bags)}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
 
-  const b = byCategory.get(category)!;
+  const b = byQualif.get(qualif)!;
+  const net = b.incomingG + b.returnsG - b.outsG;
+  const bags = decomposeBags(b.incomingEntries);
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setCategory("__all__")}
+          onClick={() => setQualif("__all__")}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" /> Retour
         </button>
       </div>
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-semibold">{category}</h3>
+        <h3 className="text-xl font-semibold">{qualif}</h3>
         <div className="text-right">
-          <div className="text-[10px] uppercase text-muted-foreground">Total</div>
-          <div className="text-xl font-mono font-bold">{b.totalG.toFixed(2)} g · {b.totalU} u</div>
+          <div className="text-[10px] uppercase text-muted-foreground">Stock net</div>
+          <div className={cn(
+            "text-xl font-mono font-bold",
+            net < 0 && "text-red-600",
+          )}>{net.toFixed(2)} g</div>
         </div>
       </div>
-      {category === "Rétention" ? (
-        <Card className="p-4 text-sm">
-          Rétention d'échantillons en cours : <strong className="font-mono">{b.totalG.toFixed(2)} g</strong>.
-          <div className="text-xs text-muted-foreground mt-1">
-            Calculée à partir des sorties d'échantillonnage non retournées.
-          </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Card className="p-3">
+          <div className="text-[10px] uppercase text-muted-foreground">Reçu (Cultivation)</div>
+          <div className="text-lg font-mono font-bold">{b.incomingG.toFixed(1)} g</div>
         </Card>
-      ) : b.sacs.length === 0 ? (
+        <Card className="p-3">
+          <div className="text-[10px] uppercase text-muted-foreground">Retours</div>
+          <div className="text-lg font-mono font-bold text-emerald-700">+{b.returnsG.toFixed(1)} g</div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-[10px] uppercase text-muted-foreground">Sorties</div>
+          <div className="text-lg font-mono font-bold text-red-700">−{b.outsG.toFixed(1)} g</div>
+        </Card>
+      </div>
+
+      <Card className="p-4">
+        <div className="text-sm font-semibold mb-2">
+          Décomposition en sacs ({bags.fullBags + bags.remainders.length} total)
+        </div>
+        <div className="text-sm font-mono">{formatBags(bags)}</div>
+        <div className="text-xs text-muted-foreground mt-2">
+          Basé sur les entrées "In from Cultivation" (sacs standards ~1000 g).
+        </div>
+      </Card>
+
+      {b.inEntries.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">
-          Aucun sac dans cette catégorie.
+          Aucune entrée "In from Cultivation" pour cette qualification.
         </Card>
       ) : (
         <div className="border rounded-md overflow-hidden">
@@ -390,23 +437,25 @@ function InventorySection({
               <tr className="text-left">
                 <th className="px-3 py-2 border-b text-xs font-semibold">#</th>
                 <th className="px-3 py-2 border-b text-xs font-semibold">Date</th>
-                <th className="px-3 py-2 border-b text-xs font-semibold">Type</th>
                 <th className="px-3 py-2 border-b text-xs font-semibold text-right">Poids (g)</th>
-                <th className="px-3 py-2 border-b text-xs font-semibold text-right">Unités</th>
+                <th className="px-3 py-2 border-b text-xs font-semibold text-right">Sacs</th>
                 <th className="px-3 py-2 border-b text-xs font-semibold">Commentaire</th>
               </tr>
             </thead>
             <tbody>
-              {b.sacs.map((m, i) => (
-                <tr key={m.id} className={cn("border-b", i % 2 && "bg-muted/20")}>
-                  <td className="px-3 py-1.5 font-mono text-xs">#{i + 1}</td>
-                  <td className="px-3 py-1.5 font-mono text-xs">{m.event_date}</td>
-                  <td className="px-3 py-1.5 text-xs">{m.product_type || m.product_format}</td>
-                  <td className="px-3 py-1.5 font-mono text-right">{Number(m.quantity_g).toFixed(2)}</td>
-                  <td className="px-3 py-1.5 font-mono text-right">{m.units}</td>
-                  <td className="px-3 py-1.5 text-xs text-muted-foreground truncate max-w-[240px]" title={m.comment1}>{m.comment1}</td>
-                </tr>
-              ))}
+              {b.inEntries.map((m, i) => {
+                const g = Number(m.quantity_g);
+                const eb = decomposeBags([g]);
+                return (
+                  <tr key={m.id} className={cn("border-b", i % 2 && "bg-muted/20")}>
+                    <td className="px-3 py-1.5 font-mono text-xs">#{i + 1}</td>
+                    <td className="px-3 py-1.5 font-mono text-xs">{m.event_date}</td>
+                    <td className="px-3 py-1.5 font-mono text-right">{g.toFixed(2)}</td>
+                    <td className="px-3 py-1.5 text-xs text-right">{formatBags(eb)}</td>
+                    <td className="px-3 py-1.5 text-xs text-muted-foreground truncate max-w-[240px]" title={m.comment1}>{m.comment1}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -414,6 +463,15 @@ function InventorySection({
     </div>
   );
 }
+
+function formatBags(b: BagBreakdown): string {
+  const parts: string[] = [];
+  if (b.fullBags > 0) parts.push(`${b.fullBags} sac${b.fullBags > 1 ? "s" : ""} de 1000 g`);
+  for (const r of b.remainders) parts.push(`1 sac de ${r.toFixed(0)} g`);
+  return parts.length ? parts.join(" + ") : "—";
+}
+
+
 
 function HistorySection({ movements }: { movements: Movement[] }) {
   const sorted = [...movements].sort((a, b) => b.event_date.localeCompare(a.event_date));
