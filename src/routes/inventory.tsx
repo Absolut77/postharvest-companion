@@ -200,7 +200,7 @@ function BatchDetail({
   // Hooks TOUJOURS appelés dans le même ordre.
   const byQualif = useMemo(() => {
     type Bucket = {
-      incomingEntries: number[]; // grammages des IN "In from Cultivation"
+      incomingEntries: BagEntry[]; // {grams, units} des IN "In from Cultivation"
       incomingG: number;
       returnsG: number;          // Back from Packaging / Sampling / Rework
       outsG: number;             // toutes les sorties
@@ -216,9 +216,10 @@ function BatchDetail({
       if (!q) continue;
       const bucket = map.get(q)!;
       const grams = Number(m.quantity_g);
+      const units = Number(m.units);
       if (m.direction === "IN") {
         if (/in from cultivation/i.test(m.reason)) {
-          bucket.incomingEntries.push(grams);
+          bucket.incomingEntries.push({ grams, units });
           bucket.incomingG += grams;
           bucket.inEntries.push(m);
         } else {
