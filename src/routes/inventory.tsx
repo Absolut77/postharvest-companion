@@ -6,12 +6,13 @@ import type { Movement } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { AlertTriangle, Search, ArrowDown, ArrowUp, Package, Box } from "lucide-react";
+import {
+  AlertTriangle, Search, ArrowDown, ArrowUp, Package,
+  Camera, Wind, Droplets, History, Boxes, ChevronLeft, Layers,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/inventory")({
@@ -111,7 +112,6 @@ function Inventory() {
       <BatchDetail
         open={!!selected}
         onOpenChange={(v) => !v && setSelected(null)}
-        batchId={selected}
         stock={selectedBatch}
         movements={selectedMovements}
       />
@@ -119,161 +119,325 @@ function Inventory() {
   );
 }
 
+// ---------- Detail modal ----------
+
+const SECTIONS = [
+  { id: "inventory", label: "Inventaire", icon: Boxes },
+  { id: "history", label: "Historique", icon: History },
+  { id: "photos", label: "Photos", icon: Camera },
+  { id: "curing", label: "Curing", icon: Droplets },
+  { id: "drying", label: "Séchage", icon: Wind },
+] as const;
+
+type SectionId = typeof SECTIONS[number]["id"];
+
+const CATEGORIES = ["Big Hand Trim", "Big", "Medium", "Small", "Trim", "Sample", "Rétention"] as const;
+type Category = typeof CATEGORIES[number];
+
+/** Catégorise un mouvement en cherchant des mots-clés dans product_type/format/comments. */
+function categorize(m: Movement): Category {
+  const hay = [
+    m.product_type, m.product_format, m.comment1, m.comment2,
+    m.additional_comments, m.destination, m.reason,
+  ].join(" ").toLowerCase();
+  if (/retention|rétention/.test(hay)) return "Rétention";
+  if (/big.*hand.*trim/.test(hay)) return "Big Hand Trim";
+  if (/sample|échantillon|echantillon/.test(hay)) return "Sample";
+  if (/\btrim\b/.test(hay)) return "Trim";
+  if (/\bmedium\b|\bmed\b/.test(hay)) return "Medium";
+  if (/\bsmall\b/.test(hay)) return "Small";
+  if (/\bbig\b/.test(hay)) return "Big";
+  return "Big"; // défaut : bulk = Big
+}
+
 function BatchDetail({
-  open, onOpenChange, batchId, stock, movements,
+  open, onOpenChange, stock, movements,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  batchId: string | null;
   stock: ReturnType<typeof computeInventory>[number] | null | undefined;
   movements: Movement[];
 }) {
-  if (!batchId || !stock) return (
-    <Dialog open={open} onOpenChange={onOpenChange}><DialogContent /></Dialog>
-  );
+  const [section, setSection] = useState<SectionId>("inventory");
+  const [category, setCategory] = useState<"__all__" | Category>("__all__");
 
-  const samplesOut = movements
-    .filter((m) => m.direction === "OUT" && /sampl/i.test(m.destination + " " + m.reason))
-    .reduce((s, m) => s + Number(m.quantity_g), 0);
-  const samplesBack = movements
-    .filter((m) => m.direction === "IN" && /sampl/i.test(m.destination + " " + m.reason))
-    .reduce((s, m) => s + Number(m.quantity_g), 0);
-  const retentionOpen = Math.max(0, samplesOut - samplesBack);
+  if (!stock) return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent /></Dialog>;
 
-  // "Lots disponibles" — SKU/lot dérivés (ex: ONO-xxx) présents dans les mouvements
-  const derivedLots = Array.from(new Set(
-    movements
-      .map((m) => m.sku)
-      .filter((s) => s && s.trim().length > 0)
-  )).sort();
+  // Résumé par catégorie basé sur les IN nets (IN - OUT) de chaque catégorie
+  const byCategory = useMemo(() => {
+    const map = new Map<Category, { sacs: Movement[]; totalG: number; totalU: number }>();
+    for (const c of CATEGORIES) map.set(c, { sacs: [], totalG: 0, totalU: 0 });
+
+    // Rétention calculée : samples sortis - samples retournés
+    let sampleOut = 0, sampleBack = 0;
+    for (const m of movements) {
+      const isSample = /sampl|échantillon|echantillon/i.test(
+        (m.destination + " " + m.reason + " " + m.comment1 + " " + m.additional_comments)
+      );
+      if (isSample) {
+        if (m.direction === "OUT") sampleOut += Number(m.quantity_g);
+        else sampleBack += Number(m.quantity_g);
+      }
+    }
+    const retention = Math.max(0, sampleOut - sampleBack);
+    map.get("Rétention")!.totalG = retention;
+
+    // Autres : chaque IN = un sac dans sa catégorie
+    for (const m of movements) {
+      if (m.direction !== "IN") continue;
+      const cat = categorize(m);
+      if (cat === "Rétention") continue;
+      const bucket = map.get(cat)!;
+      bucket.sacs.push(m);
+      bucket.totalG += Number(m.quantity_g);
+      bucket.totalU += Number(m.units);
+    }
+    // Retrancher les OUT correspondants (sauf sample déjà comptés en rétention)
+    for (const m of movements) {
+      if (m.direction !== "OUT") continue;
+      const cat = categorize(m);
+      if (cat === "Rétention" || cat === "Sample") continue;
+      const bucket = map.get(cat)!;
+      bucket.totalG -= Number(m.quantity_g);
+      bucket.totalU -= Number(m.units);
+    }
+    return map;
+  }, [movements]);
+
+  const totalG = Array.from(byCategory.values()).reduce((s, v) => s + v.totalG, 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            <span className="font-mono">{stock.batch_id}</span>
-            <span className="text-muted-foreground">·</span>
-            <span>{stock.strain}</span>
-          </DialogTitle>
-          <DialogDescription>{stock.product_type} — {stock.product_format}</DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-3 gap-3">
-          <Card className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground">Stock (g)</div>
-            <div className={cn(
-              "text-2xl font-mono font-bold",
-              stock.quantity_g < 0 && "text-red-600",
-              stock.quantity_g < 100 && stock.quantity_g >= 0 && "text-amber-600",
-            )}>{stock.quantity_g.toFixed(2)}</div>
-          </Card>
-          <Card className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground">Unités</div>
-            <div className="text-2xl font-mono font-bold">{stock.units}</div>
-          </Card>
-          <Card className="p-3">
-            <div className="text-[10px] uppercase text-muted-foreground">Mouvements</div>
-            <div className="text-2xl font-mono font-bold">{stock.movements}</div>
-          </Card>
-        </div>
-
-        <Card className="p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-semibold text-sm">Échantillons</div>
-            <Badge variant={retentionOpen > 0 ? "outline" : "secondary"}
-              className={cn(retentionOpen > 0 && "border-amber-500/40 text-amber-700")}>
-              {retentionOpen > 0 ? `Rétention en cours: ${retentionOpen.toFixed(2)}g` : "Rétention soldée"}
-            </Badge>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Sortis pour échantillonnage</span>
-              <span className="font-mono">{samplesOut.toFixed(2)} g</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Retournés</span>
-              <span className="font-mono">{samplesBack.toFixed(2)} g</span>
-            </div>
-          </div>
-        </Card>
-
-        <Tabs defaultValue="photo">
-          <TabsList>
-            <TabsTrigger value="photo">Photo</TabsTrigger>
-            <TabsTrigger value="curing">Curing</TabsTrigger>
-            <TabsTrigger value="drying">Séchage</TabsTrigger>
-            <TabsTrigger value="history">Historique</TabsTrigger>
-          </TabsList>
-          <TabsContent value="photo">
-            <Card className="p-6 text-center text-muted-foreground text-sm">
-              Aucune photo enregistrée. <br />
-              <span className="text-xs">(Module photo à venir — le journal reste la source de saisie.)</span>
-            </Card>
-          </TabsContent>
-          <TabsContent value="curing">
-            <Card className="p-6 text-center text-muted-foreground text-sm">
-              Pas de relevés de curing pour ce lot.
-            </Card>
-          </TabsContent>
-          <TabsContent value="drying">
-            <Card className="p-6 text-center text-muted-foreground text-sm">
-              Pas de relevés de séchage pour ce lot.
-            </Card>
-          </TabsContent>
-          <TabsContent value="history">
-            <Card className="overflow-hidden">
-              <div className="max-h-72 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/60 sticky top-0">
-                    <tr className="text-left">
-                      <th className="px-2 py-1.5 border-b">Date</th>
-                      <th className="px-2 py-1.5 border-b">Dir.</th>
-                      <th className="px-2 py-1.5 border-b text-right">Qté (g)</th>
-                      <th className="px-2 py-1.5 border-b text-right">U</th>
-                      <th className="px-2 py-1.5 border-b">Destination</th>
-                      <th className="px-2 py-1.5 border-b">Commentaire</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {movements.slice().sort((a, b) => b.event_date.localeCompare(a.event_date)).map((m, i) => (
-                      <tr key={m.id} className={cn("border-b", i % 2 && "bg-muted/20")}>
-                        <td className="px-2 py-1 font-mono">{m.event_date}</td>
-                        <td className="px-2 py-1">
-                          {m.direction === "IN"
-                            ? <span className="inline-flex items-center gap-1 text-emerald-700"><ArrowDown className="h-3 w-3" />IN</span>
-                            : <span className="inline-flex items-center gap-1 text-red-700"><ArrowUp className="h-3 w-3" />OUT</span>}
-                        </td>
-                        <td className="px-2 py-1 font-mono text-right">{Number(m.quantity_g).toFixed(2)}</td>
-                        <td className="px-2 py-1 font-mono text-right">{m.units}</td>
-                        <td className="px-2 py-1">{m.destination || m.reason}</td>
-                        <td className="px-2 py-1 text-muted-foreground truncate max-w-[200px]" title={m.comment1 || m.comment}>{m.comment1 || m.comment}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+      <DialogContent className="max-w-5xl max-h-[92vh] p-0 overflow-hidden">
+        <div className="flex h-[85vh]">
+          {/* Sidebar */}
+          <aside className="w-56 shrink-0 border-r bg-muted/40 flex flex-col">
+            <div className="p-4 border-b">
+              <div className="flex items-center gap-2 mb-1">
+                <Package className="h-4 w-4 text-primary" />
+                <div className="text-xs uppercase text-muted-foreground font-semibold">Variété</div>
               </div>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        <Card className="p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Box className="h-4 w-4" />
-            <div className="font-semibold text-sm">Lots disponibles (SKU)</div>
-          </div>
-          {derivedLots.length === 0 ? (
-            <div className="text-xs text-muted-foreground">Aucun SKU associé pour l'instant.</div>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {derivedLots.map((s) => (
-                <Badge key={s} variant="outline" className="font-mono text-xs">{s}</Badge>
-              ))}
+              <div className="text-lg font-bold leading-tight">{stock.strain || "—"}</div>
+              <div className="font-mono text-xs text-muted-foreground mt-1">{stock.batch_id}</div>
             </div>
-          )}
-        </Card>
+            <nav className="p-2 space-y-1 flex-1">
+              {SECTIONS.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setSection(s.id)}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition",
+                      section === s.id
+                        ? "bg-primary text-primary-foreground font-medium"
+                        : "hover:bg-accent text-foreground/80",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {s.label}
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="p-3 border-t bg-background/50">
+              <div className="text-[10px] uppercase text-muted-foreground">Stock total</div>
+              <div className={cn(
+                "text-xl font-mono font-bold",
+                stock.quantity_g < 0 && "text-red-600",
+                stock.quantity_g < 100 && stock.quantity_g >= 0 && "text-amber-600",
+              )}>{stock.quantity_g.toFixed(1)} g</div>
+              <div className="text-xs text-muted-foreground">{stock.units} unités · {stock.movements} mvts</div>
+            </div>
+          </aside>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {section === "inventory" && (
+              <InventorySection
+                byCategory={byCategory}
+                category={category}
+                setCategory={setCategory}
+                totalG={totalG}
+              />
+            )}
+            {section === "history" && <HistorySection movements={movements} />}
+            {section === "photos" && <Placeholder icon={Camera} title="Photos" msg="Module photo à venir." />}
+            {section === "curing" && <Placeholder icon={Droplets} title="Curing" msg="Aucun relevé de curing pour ce lot." />}
+            {section === "drying" && <Placeholder icon={Wind} title="Séchage" msg="Aucun relevé de séchage pour ce lot." />}
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function InventorySection({
+  byCategory, category, setCategory, totalG,
+}: {
+  byCategory: Map<Category, { sacs: Movement[]; totalG: number; totalU: number }>;
+  category: "__all__" | Category;
+  setCategory: (c: "__all__" | Category) => void;
+  totalG: number;
+}) {
+  if (category === "__all__") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-semibold flex items-center gap-2">
+              <Layers className="h-5 w-5" /> Résumé de l'inventaire
+            </h3>
+            <p className="text-xs text-muted-foreground">Cliquez sur une catégorie pour voir le détail.</p>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] uppercase text-muted-foreground">Total catégorisé</div>
+            <div className="text-2xl font-mono font-bold">{totalG.toFixed(1)} g</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {CATEGORIES.map((c) => {
+            const b = byCategory.get(c)!;
+            const count = c === "Rétention" ? (b.totalG > 0 ? 1 : 0) : b.sacs.length;
+            const empty = b.totalG <= 0.001 && count === 0;
+            return (
+              <button
+                key={c}
+                onClick={() => setCategory(c)}
+                disabled={empty}
+                className={cn(
+                  "text-left rounded-lg border p-3 hover:border-primary hover:shadow-sm transition",
+                  empty && "opacity-40 cursor-not-allowed",
+                )}
+              >
+                <div className="text-sm font-semibold">{c}</div>
+                <div className="mt-2 flex items-end justify-between">
+                  <div>
+                    <div className="text-[10px] uppercase text-muted-foreground">Sacs</div>
+                    <div className="text-xl font-mono font-bold">{count}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase text-muted-foreground">Poids</div>
+                    <div className="font-mono text-sm">{b.totalG.toFixed(1)} g</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const b = byCategory.get(category)!;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setCategory("__all__")}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" /> Retour
+        </button>
+      </div>
+      <div className="flex items-center justify-between">
+        <h3 className="text-xl font-semibold">{category}</h3>
+        <div className="text-right">
+          <div className="text-[10px] uppercase text-muted-foreground">Total</div>
+          <div className="text-xl font-mono font-bold">{b.totalG.toFixed(2)} g · {b.totalU} u</div>
+        </div>
+      </div>
+      {category === "Rétention" ? (
+        <Card className="p-4 text-sm">
+          Rétention d'échantillons en cours : <strong className="font-mono">{b.totalG.toFixed(2)} g</strong>.
+          <div className="text-xs text-muted-foreground mt-1">
+            Calculée à partir des sorties d'échantillonnage non retournées.
+          </div>
+        </Card>
+      ) : b.sacs.length === 0 ? (
+        <Card className="p-6 text-center text-sm text-muted-foreground">
+          Aucun sac dans cette catégorie.
+        </Card>
+      ) : (
+        <div className="border rounded-md overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/60">
+              <tr className="text-left">
+                <th className="px-3 py-2 border-b text-xs font-semibold">#</th>
+                <th className="px-3 py-2 border-b text-xs font-semibold">Date</th>
+                <th className="px-3 py-2 border-b text-xs font-semibold">Type</th>
+                <th className="px-3 py-2 border-b text-xs font-semibold text-right">Poids (g)</th>
+                <th className="px-3 py-2 border-b text-xs font-semibold text-right">Unités</th>
+                <th className="px-3 py-2 border-b text-xs font-semibold">Commentaire</th>
+              </tr>
+            </thead>
+            <tbody>
+              {b.sacs.map((m, i) => (
+                <tr key={m.id} className={cn("border-b", i % 2 && "bg-muted/20")}>
+                  <td className="px-3 py-1.5 font-mono text-xs">#{i + 1}</td>
+                  <td className="px-3 py-1.5 font-mono text-xs">{m.event_date}</td>
+                  <td className="px-3 py-1.5 text-xs">{m.product_type || m.product_format}</td>
+                  <td className="px-3 py-1.5 font-mono text-right">{Number(m.quantity_g).toFixed(2)}</td>
+                  <td className="px-3 py-1.5 font-mono text-right">{m.units}</td>
+                  <td className="px-3 py-1.5 text-xs text-muted-foreground truncate max-w-[240px]" title={m.comment1}>{m.comment1}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistorySection({ movements }: { movements: Movement[] }) {
+  const sorted = [...movements].sort((a, b) => b.event_date.localeCompare(a.event_date));
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xl font-semibold flex items-center gap-2">
+        <History className="h-5 w-5" /> Historique des mouvements
+      </h3>
+      <Card className="overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/60">
+            <tr className="text-left">
+              <th className="px-2 py-1.5 border-b text-xs">Date</th>
+              <th className="px-2 py-1.5 border-b text-xs">Init.</th>
+              <th className="px-2 py-1.5 border-b text-xs">Dir.</th>
+              <th className="px-2 py-1.5 border-b text-xs text-right">Qté (g)</th>
+              <th className="px-2 py-1.5 border-b text-xs text-right">U</th>
+              <th className="px-2 py-1.5 border-b text-xs">Destination</th>
+              <th className="px-2 py-1.5 border-b text-xs">Commentaire</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((m, i) => (
+              <tr key={m.id} className={cn("border-b", i % 2 && "bg-muted/20")}>
+                <td className="px-2 py-1 font-mono text-xs">{m.event_date}</td>
+                <td className="px-2 py-1 font-mono text-xs font-semibold">{m.initials}</td>
+                <td className="px-2 py-1">
+                  {m.direction === "IN"
+                    ? <span className="inline-flex items-center gap-1 text-emerald-700 text-xs"><ArrowDown className="h-3 w-3" />IN</span>
+                    : <span className="inline-flex items-center gap-1 text-red-700 text-xs"><ArrowUp className="h-3 w-3" />OUT</span>}
+                </td>
+                <td className="px-2 py-1 font-mono text-right">{Number(m.quantity_g).toFixed(2)}</td>
+                <td className="px-2 py-1 font-mono text-right">{m.units}</td>
+                <td className="px-2 py-1 text-xs">{m.destination || m.reason}</td>
+                <td className="px-2 py-1 text-xs text-muted-foreground truncate max-w-[200px]" title={m.comment1}>{m.comment1}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+function Placeholder({ icon: Icon, title, msg }: { icon: any; title: string; msg: string }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xl font-semibold flex items-center gap-2"><Icon className="h-5 w-5" /> {title}</h3>
+      <Card className="p-10 text-center text-sm text-muted-foreground">{msg}</Card>
+    </div>
   );
 }
