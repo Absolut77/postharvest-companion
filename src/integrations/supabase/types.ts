@@ -14,7 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      movements: {
+        Row: {
+          batch_id: string
+          comment: string
+          created_at: string
+          detail: string
+          direction: string
+          event_date: string
+          id: string
+          initials: string
+          product_format: string
+          product_type: string
+          quantity_g: number
+          reason: string
+          sku: string
+          strain: string
+          units: number
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          comment?: string
+          created_at?: string
+          detail?: string
+          direction: string
+          event_date?: string
+          id?: string
+          initials: string
+          product_format?: string
+          product_type?: string
+          quantity_g?: number
+          reason?: string
+          sku?: string
+          strain: string
+          units?: number
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          comment?: string
+          created_at?: string
+          detail?: string
+          direction?: string
+          event_date?: string
+          id?: string
+          initials?: string
+          product_format?: string
+          product_type?: string
+          quantity_g?: number
+          reason?: string
+          sku?: string
+          strain?: string
+          units?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
