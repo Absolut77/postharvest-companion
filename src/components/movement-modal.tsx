@@ -30,6 +30,7 @@ type Props = {
   editing?: Movement | null;
   movements: Movement[];
   defaultDate?: string;
+  prefill?: { batch_id?: string; strain?: string; comment2?: string; product_format?: string; direction?: Direction };
 };
 
 const empty = (initials: string) => ({
