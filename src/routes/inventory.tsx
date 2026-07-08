@@ -386,7 +386,7 @@ function InventorySection({
             {activeQualifs.map((q) => {
               const b = byQualif.get(q)!;
               const net = b.incomingG + b.returnsG - b.outsG;
-              const bags = decomposeBags(b.incomingEntries);
+              const bags = decomposeBags(b.incomingEntries, bagSizeFor(q));
               const totalBags = bags.fullBags + bags.remainders.length;
               return (
                 <button
