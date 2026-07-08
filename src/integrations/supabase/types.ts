@@ -16,11 +16,17 @@ export type Database = {
     Tables: {
       movements: {
         Row: {
+          additional_comments: string
+          adjustment_validation: boolean
           batch_id: string
           comment: string
+          comment1: string
+          comment2: string
           created_at: string
+          destination: string
           detail: string
           direction: string
+          elevated_update: boolean
           event_date: string
           id: string
           initials: string
@@ -29,16 +35,24 @@ export type Database = {
           quantity_g: number
           reason: string
           sku: string
+          stamp_type: string
+          stamp_used: string
           strain: string
           units: number
           updated_at: string
         }
         Insert: {
+          additional_comments?: string
+          adjustment_validation?: boolean
           batch_id: string
           comment?: string
+          comment1?: string
+          comment2?: string
           created_at?: string
+          destination?: string
           detail?: string
           direction: string
+          elevated_update?: boolean
           event_date?: string
           id?: string
           initials: string
@@ -47,16 +61,24 @@ export type Database = {
           quantity_g?: number
           reason?: string
           sku?: string
+          stamp_type?: string
+          stamp_used?: string
           strain: string
           units?: number
           updated_at?: string
         }
         Update: {
+          additional_comments?: string
+          adjustment_validation?: boolean
           batch_id?: string
           comment?: string
+          comment1?: string
+          comment2?: string
           created_at?: string
+          destination?: string
           detail?: string
           direction?: string
+          elevated_update?: boolean
           event_date?: string
           id?: string
           initials?: string
@@ -65,6 +87,8 @@ export type Database = {
           quantity_g?: number
           reason?: string
           sku?: string
+          stamp_type?: string
+          stamp_used?: string
           strain?: string
           units?: number
           updated_at?: string
