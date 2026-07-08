@@ -29,6 +29,7 @@ type Props = {
   onOpenChange: (v: boolean) => void;
   editing?: Movement | null;
   movements: Movement[];
+  defaultDate?: string;
 };
 
 const empty = (initials: string) => ({
