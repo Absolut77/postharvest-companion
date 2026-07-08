@@ -172,22 +172,26 @@ function detectQualification(m: Movement): Qualification | null {
   return null;
 }
 
-const BAG_SIZE_G = 1000;
+/** Taille de sac standard par qualification (en g). Trim = 1500 g, fleurs = 1000 g. */
+function bagSizeFor(q: Qualification): number {
+  return q === "Trim" ? 1500 : 1000;
+}
 
 type BagEntry = { grams: number; units: number };
 
 type BagBreakdown = {
-  fullBags: number;      // sacs de 1000g
-  remainders: number[];  // restes (chaque entrée = un sac partiel)
+  bagSize: number;
+  fullBags: number;
+  remainders: number[];
 };
 
 /**
  * Décompose une liste d'entrées "In from Cultivation" en sacs.
- * Règle métier du Log 2026 : la colonne Units = nombre total de sacs de l'entrée.
- * Décomposition : (units - 1) sacs de 1000 g + 1 sac de (grams - (units-1)*1000) g.
+ * Règle métier : la colonne Units = nombre total de sacs de l'entrée.
+ * Décomposition : (units - 1) sacs pleins de `bagSize` g + 1 sac du reste.
  * Si units ≤ 1, on considère toute la quantité comme un seul sac.
  */
-function decomposeBags(entries: BagEntry[]): BagBreakdown {
+function decomposeBags(entries: BagEntry[], bagSize: number): BagBreakdown {
   let full = 0;
   const remainders: number[] = [];
   for (const { grams, units } of entries) {
@@ -198,12 +202,12 @@ function decomposeBags(entries: BagEntry[]): BagBreakdown {
       continue;
     }
     const fullThis = u - 1;
-    const rem = +(grams - fullThis * BAG_SIZE_G).toFixed(2);
+    const rem = +(grams - fullThis * bagSize).toFixed(2);
     full += fullThis;
     if (rem > 0.001) remainders.push(rem);
-    else full += 1; // reste nul → le dernier sac est aussi plein
+    else full += 1;
   }
-  return { fullBags: full, remainders };
+  return { bagSize, fullBags: full, remainders };
 }
 
 
