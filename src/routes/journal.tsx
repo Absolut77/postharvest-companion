@@ -8,13 +8,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { Plus, Pencil, Trash2, Search, ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { ColoredCheckbox } from "@/components/colored-checkbox";
 
 export const Route = createFileRoute("/journal")({
   head: () => ({ meta: [{ title: "Journal (Log 2026) — PostHarvest Companion" }] }),
@@ -22,8 +23,10 @@ export const Route = createFileRoute("/journal")({
 });
 
 type SortKey =
-  | "event_date" | "initials" | "direction" | "strain" | "batch_id"
-  | "product_type" | "product_format" | "quantity_g" | "units" | "destination" | "comment1";
+  | "event_date" | "initials" | "strain" | "batch_id"
+  | "product_type" | "product_format" | "quantity_g" | "units"
+  | "destination" | "comment1" | "adjustment_validation" | "comment2"
+  | "units2" | "unit_indicator" | "sku" | "additional_comments" | "elevated_update";
 
 type SortDir = "asc" | "desc";
 
@@ -176,48 +179,71 @@ function Journal() {
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/60 sticky top-0">
+          <table className="w-full text-sm border-collapse">
+            <thead className="bg-muted/70 sticky top-0 z-10">
               <tr className="text-left">
                 <Th k="event_date" className="w-24">Date</Th>
-                <Th k="initials" className="w-14">Init.</Th>
-                <Th k="direction" align="center" className="w-16">Dir.</Th>
+                <Th k="initials" className="w-20">Requester Initials</Th>
                 <Th k="strain">Strain</Th>
-                <Th k="batch_id">Lot</Th>
-                <Th k="product_type">Type</Th>
-                <Th k="product_format">Format</Th>
-                <Th k="quantity_g" align="right">Qté (g)</Th>
-                <Th k="units" align="right">U</Th>
+                <Th k="batch_id">Batch/Lot ID</Th>
+                <Th k="product_type">Product type</Th>
+                <Th k="product_format">Product Format</Th>
+                <Th k="quantity_g" align="right">Quantity (G)</Th>
+                <Th k="units" align="right">Units</Th>
                 <Th k="destination">Destination</Th>
-                <Th k="comment1">Commentaire</Th>
-                <th className="px-2 py-2 border-b font-semibold w-20"></th>
+                <Th k="comment1">Comment #1</Th>
+                <Th k="adjustment_validation" align="center" className="w-24">Adjustment Validation</Th>
+                <Th k="comment2">Comment #2</Th>
+                <Th k="units2" align="right">Units 2</Th>
+                <Th k="unit_indicator" align="center" className="w-20">Unit Indicator</Th>
+                <Th k="sku">SKU</Th>
+                <Th k="additional_comments">Additional Comments</Th>
+                <Th k="elevated_update" align="center" className="w-24">Elevated Update</Th>
+                <th className="px-2 py-2 border-b font-semibold w-20 sticky right-0 bg-muted/70"></th>
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={12} className="text-center py-10 text-muted-foreground">Chargement…</td></tr>}
+              {isLoading && <tr><td colSpan={18} className="text-center py-10 text-muted-foreground">Chargement…</td></tr>}
               {!isLoading && filtered.length === 0 && (
-                <tr><td colSpan={12} className="text-center py-10 text-muted-foreground">Aucun événement</td></tr>
+                <tr><td colSpan={18} className="text-center py-10 text-muted-foreground">Aucun événement</td></tr>
               )}
               {filtered.slice(0, 500).map((m, i) => (
-                <tr key={m.id} className={cn("border-b hover:bg-accent/40", i % 2 && "bg-muted/20")}>
-                  <td className="px-2 py-1 font-mono text-xs whitespace-nowrap">{m.event_date}</td>
-                  <td className="px-2 py-1 font-semibold">{m.initials}</td>
-                  <td className="px-2 py-1 text-center">
-                    {m.direction === "IN"
-                      ? <Badge variant="outline" className="border-emerald-500/40 text-emerald-700 gap-1"><ArrowDown className="h-3 w-3" />IN</Badge>
-                      : <Badge variant="outline" className="border-red-500/40 text-red-700 gap-1"><ArrowUp className="h-3 w-3" />OUT</Badge>}
-                  </td>
-                  <td className="px-2 py-1">{m.strain}</td>
-                  <td className="px-2 py-1 font-mono text-xs">
+                <tr
+                  key={m.id}
+                  className={cn(
+                    "border-b hover:bg-primary/5 transition-colors",
+                    i % 2 === 0 ? "bg-background" : "bg-muted/30",
+                    m.direction === "OUT" && "border-l-2 border-l-red-400/40",
+                    m.direction === "IN" && "border-l-2 border-l-emerald-400/50",
+                  )}
+                >
+                  <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">{m.event_date}</td>
+                  <td className="px-2 py-1.5 font-semibold font-mono text-xs">{m.initials}</td>
+                  <td className="px-2 py-1.5">{m.strain}</td>
+                  <td className="px-2 py-1.5 font-mono text-xs">
                     <button className="hover:underline" onClick={() => setBatchFilter(m.batch_id)} title="Filtrer sur ce lot">{m.batch_id}</button>
                   </td>
-                  <td className="px-2 py-1 text-muted-foreground">{m.product_type}</td>
-                  <td className="px-2 py-1 text-muted-foreground">{m.product_format}</td>
-                  <td className="px-2 py-1 font-mono text-right">{Number(m.quantity_g).toFixed(2)}</td>
-                  <td className="px-2 py-1 font-mono text-right">{m.units}</td>
-                  <td className="px-2 py-1 text-xs">{m.destination || m.reason}</td>
-                  <td className="px-2 py-1 text-xs text-muted-foreground max-w-[240px] truncate" title={m.comment1 || m.comment}>{m.comment1 || m.comment}</td>
-                  <td className="px-2 py-1">
+                  <td className="px-2 py-1.5 text-muted-foreground text-xs">{m.product_type}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground text-xs">{m.product_format}</td>
+                  <td className="px-2 py-1.5 font-mono text-right">{Number(m.quantity_g).toFixed(2)}</td>
+                  <td className="px-2 py-1.5 font-mono text-right">{m.units}</td>
+                  <td className="px-2 py-1.5 text-xs">{m.destination || m.reason}</td>
+                  <td className="px-2 py-1.5 text-xs text-muted-foreground max-w-[200px] truncate" title={m.comment1 || m.comment}>{m.comment1 || m.comment}</td>
+                  <td className="px-2 py-1.5 text-center">
+                    <ColoredCheckbox size="sm" checked={!!m.adjustment_validation} readOnly />
+                  </td>
+                  <td className="px-2 py-1.5 text-xs text-muted-foreground max-w-[180px] truncate" title={m.comment2}>{m.comment2}</td>
+                  <td className="px-2 py-1.5 font-mono text-right">{Number(m.units2 ?? 0) || ""}</td>
+                  <td className="px-2 py-1.5 text-center text-xs font-mono">{m.unit_indicator}</td>
+                  <td className="px-2 py-1.5 font-mono text-xs">{m.sku}</td>
+                  <td className="px-2 py-1.5 text-xs text-muted-foreground max-w-[220px] truncate" title={m.additional_comments}>{m.additional_comments}</td>
+                  <td className="px-2 py-1.5 text-center">
+                    <ColoredCheckbox size="sm" checked={!!m.elevated_update} readOnly />
+                  </td>
+                  <td className={cn(
+                    "px-2 py-1.5 sticky right-0",
+                    i % 2 === 0 ? "bg-background" : "bg-muted/30",
+                  )}>
                     <div className="flex gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(m)} title="Éditer">
                         <Pencil className="h-3.5 w-3.5" />
@@ -234,6 +260,7 @@ function Journal() {
             </tbody>
           </table>
         </div>
+
         {filtered.length > 500 && (
           <div className="p-3 text-center text-xs text-muted-foreground border-t bg-muted/20">
             Affichage limité à 500 lignes · {filtered.length - 500} de plus. Affinez la recherche.
