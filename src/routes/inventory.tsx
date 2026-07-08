@@ -422,13 +422,16 @@ function InventorySection({
   const bags = decomposeBags(b.incomingEntries);
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <button
           onClick={() => setQualif("__all__")}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" /> Retour
         </button>
+        <Button size="sm" onClick={() => onLogEvent(qualif)} className="shadow">
+          <PlusCircle className="h-4 w-4 mr-1" /> Utiliser ces {qualif} — Loguer un événement
+        </Button>
       </div>
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-semibold">{qualif}</h3>
@@ -440,6 +443,7 @@ function InventorySection({
           )}>{net.toFixed(2)} g</div>
         </div>
       </div>
+
 
       <div className="grid grid-cols-3 gap-3">
         <Card className="p-3">
