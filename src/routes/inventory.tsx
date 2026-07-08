@@ -172,22 +172,26 @@ function detectQualification(m: Movement): Qualification | null {
   return null;
 }
 
-const BAG_SIZE_G = 1000;
+/** Taille de sac standard par qualification (en g). Trim = 1500 g, fleurs = 1000 g. */
+function bagSizeFor(q: Qualification): number {
+  return q === "Trim" ? 1500 : 1000;
+}
 
 type BagEntry = { grams: number; units: number };
 
 type BagBreakdown = {
-  fullBags: number;      // sacs de 1000g
-  remainders: number[];  // restes (chaque entrée = un sac partiel)
+  bagSize: number;
+  fullBags: number;
+  remainders: number[];
 };
 
 /**
  * Décompose une liste d'entrées "In from Cultivation" en sacs.
- * Règle métier du Log 2026 : la colonne Units = nombre total de sacs de l'entrée.
- * Décomposition : (units - 1) sacs de 1000 g + 1 sac de (grams - (units-1)*1000) g.
+ * Règle métier : la colonne Units = nombre total de sacs de l'entrée.
+ * Décomposition : (units - 1) sacs pleins de `bagSize` g + 1 sac du reste.
  * Si units ≤ 1, on considère toute la quantité comme un seul sac.
  */
-function decomposeBags(entries: BagEntry[]): BagBreakdown {
+function decomposeBags(entries: BagEntry[], bagSize: number): BagBreakdown {
   let full = 0;
   const remainders: number[] = [];
   for (const { grams, units } of entries) {
@@ -198,12 +202,12 @@ function decomposeBags(entries: BagEntry[]): BagBreakdown {
       continue;
     }
     const fullThis = u - 1;
-    const rem = +(grams - fullThis * BAG_SIZE_G).toFixed(2);
+    const rem = +(grams - fullThis * bagSize).toFixed(2);
     full += fullThis;
     if (rem > 0.001) remainders.push(rem);
-    else full += 1; // reste nul → le dernier sac est aussi plein
+    else full += 1;
   }
-  return { fullBags: full, remainders };
+  return { bagSize, fullBags: full, remainders };
 }
 
 
@@ -382,7 +386,7 @@ function InventorySection({
             {activeQualifs.map((q) => {
               const b = byQualif.get(q)!;
               const net = b.incomingG + b.returnsG - b.outsG;
-              const bags = decomposeBags(b.incomingEntries);
+              const bags = decomposeBags(b.incomingEntries, bagSizeFor(q));
               const totalBags = bags.fullBags + bags.remainders.length;
               return (
                 <button
@@ -419,7 +423,7 @@ function InventorySection({
 
   const b = byQualif.get(qualif)!;
   const net = b.incomingG + b.returnsG - b.outsG;
-  const bags = decomposeBags(b.incomingEntries);
+  const bags = decomposeBags(b.incomingEntries, bagSizeFor(qualif));
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -467,7 +471,7 @@ function InventorySection({
         <div className="text-sm font-mono">{formatBags(bags)}</div>
         <div className="text-xs text-muted-foreground mt-2">
           Décomposition dérivée de la colonne <strong>Units</strong> du Journal :
-          par entrée, (Units − 1) sacs pleins de 1000 g + 1 sac du reste.
+          par entrée, (Units − 1) sacs pleins de {bagSizeFor(qualif)} g + 1 sac du reste.
         </div>
       </Card>
 
@@ -491,7 +495,7 @@ function InventorySection({
             <tbody>
               {b.inEntries.map((m, i) => {
                 const g = Number(m.quantity_g);
-                const eb = decomposeBags([{ grams: g, units: Number(m.units) }]);
+                const eb = decomposeBags([{ grams: g, units: Number(m.units) }], bagSizeFor(qualif));
                 return (
                   <tr key={m.id} className={cn("border-b", i % 2 && "bg-muted/20")}>
                     <td className="px-3 py-1.5 font-mono text-xs">#{i + 1}</td>
@@ -512,7 +516,7 @@ function InventorySection({
 
 function formatBags(b: BagBreakdown): string {
   const parts: string[] = [];
-  if (b.fullBags > 0) parts.push(`${b.fullBags} sac${b.fullBags > 1 ? "s" : ""} de 1000 g`);
+  if (b.fullBags > 0) parts.push(`${b.fullBags} sac${b.fullBags > 1 ? "s" : ""} de ${b.bagSize} g`);
   for (const r of b.remainders) parts.push(`1 sac de ${r.toFixed(0)} g`);
   return parts.length ? parts.join(" + ") : "—";
 }
