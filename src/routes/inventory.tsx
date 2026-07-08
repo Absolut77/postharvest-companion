@@ -161,14 +161,11 @@ function BatchDetail({
   const [section, setSection] = useState<SectionId>("inventory");
   const [category, setCategory] = useState<"__all__" | Category>("__all__");
 
-  if (!stock) return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent /></Dialog>;
-
-  // Résumé par catégorie basé sur les IN nets (IN - OUT) de chaque catégorie
+  // Hooks TOUJOURS appelés dans le même ordre — ne jamais mettre un early return au-dessus.
   const byCategory = useMemo(() => {
     const map = new Map<Category, { sacs: Movement[]; totalG: number; totalU: number }>();
     for (const c of CATEGORIES) map.set(c, { sacs: [], totalG: 0, totalU: 0 });
 
-    // Rétention calculée : samples sortis - samples retournés
     let sampleOut = 0, sampleBack = 0;
     for (const m of movements) {
       const isSample = /sampl|échantillon|echantillon/i.test(
@@ -182,7 +179,6 @@ function BatchDetail({
     const retention = Math.max(0, sampleOut - sampleBack);
     map.get("Rétention")!.totalG = retention;
 
-    // Autres : chaque IN = un sac dans sa catégorie
     for (const m of movements) {
       if (m.direction !== "IN") continue;
       const cat = categorize(m);
@@ -192,7 +188,6 @@ function BatchDetail({
       bucket.totalG += Number(m.quantity_g);
       bucket.totalU += Number(m.units);
     }
-    // Retrancher les OUT correspondants (sauf sample déjà comptés en rétention)
     for (const m of movements) {
       if (m.direction !== "OUT") continue;
       const cat = categorize(m);
@@ -206,6 +201,15 @@ function BatchDetail({
 
   const totalG = Array.from(byCategory.values()).reduce((s, v) => s + v.totalG, 0);
 
+  // Rendu conditionnel APRÈS que tous les hooks ont été déclarés.
+  if (!stock) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent />
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[92vh] p-0 overflow-hidden">
@@ -213,6 +217,7 @@ function BatchDetail({
           {/* Sidebar */}
           <aside className="w-56 shrink-0 border-r bg-muted/40 flex flex-col">
             <div className="p-4 border-b">
+
               <div className="flex items-center gap-2 mb-1">
                 <Package className="h-4 w-4 text-primary" />
                 <div className="text-xs uppercase text-muted-foreground font-semibold">Variété</div>
