@@ -15,6 +15,7 @@ import {
 import { Plus, Pencil, Trash2, Search, ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { ColoredCheckbox } from "@/components/colored-checkbox";
 
 export const Route = createFileRoute("/journal")({
   head: () => ({ meta: [{ title: "Journal (Log 2026) — PostHarvest Companion" }] }),
@@ -22,8 +23,10 @@ export const Route = createFileRoute("/journal")({
 });
 
 type SortKey =
-  | "event_date" | "initials" | "direction" | "strain" | "batch_id"
-  | "product_type" | "product_format" | "quantity_g" | "units" | "destination" | "comment1";
+  | "event_date" | "initials" | "strain" | "batch_id"
+  | "product_type" | "product_format" | "quantity_g" | "units"
+  | "destination" | "comment1" | "adjustment_validation" | "comment2"
+  | "units2" | "unit_indicator" | "sku" | "additional_comments" | "elevated_update";
 
 type SortDir = "asc" | "desc";
 
