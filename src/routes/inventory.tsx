@@ -314,10 +314,10 @@ function BatchDetail({
 }
 
 function InventorySection({
-  byQualif, qualif, setQualif, totalNet,
+  byQualif, qualif, setQualif, totalNet, onLogEvent,
 }: {
   byQualif: Map<Qualification, {
-    incomingEntries: number[];
+    incomingEntries: BagEntry[];
     incomingG: number;
     returnsG: number;
     outsG: number;
@@ -326,6 +326,7 @@ function InventorySection({
   qualif: "__all__" | Qualification;
   setQualif: (q: "__all__" | Qualification) => void;
   totalNet: number;
+  onLogEvent: (qualif: Qualification) => void;
 }) {
   if (qualif === "__all__") {
     const activeQualifs = QUALIFICATIONS.filter((q) => {
