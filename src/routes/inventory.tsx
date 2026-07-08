@@ -471,7 +471,7 @@ function InventorySection({
         <div className="text-sm font-mono">{formatBags(bags)}</div>
         <div className="text-xs text-muted-foreground mt-2">
           Décomposition dérivée de la colonne <strong>Units</strong> du Journal :
-          par entrée, (Units − 1) sacs pleins de 1000 g + 1 sac du reste.
+          par entrée, (Units − 1) sacs pleins de {bagSizeFor(qualif)} g + 1 sac du reste.
         </div>
       </Card>
 
