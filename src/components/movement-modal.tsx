@@ -92,9 +92,9 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
         unit_indicator: editing.unit_indicator ?? "",
       });
     } else {
-      setForm(empty(currentUser));
+      setForm({ ...empty(currentUser), event_date: defaultDate ?? new Date().toISOString().slice(0, 10) });
     }
-  }, [open, editing, currentUser]);
+  }, [open, editing, currentUser, defaultDate]);
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
