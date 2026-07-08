@@ -58,7 +58,7 @@ const empty = (initials: string) => ({
   unit_indicator: "",
 });
 
-export function MovementModal({ open, onOpenChange, editing, movements }: Props) {
+export function MovementModal({ open, onOpenChange, editing, movements, defaultDate }: Props) {
   const currentUser = useCurrentUser();
   const [form, setForm] = useState(empty(currentUser));
   const qc = useQueryClient();
