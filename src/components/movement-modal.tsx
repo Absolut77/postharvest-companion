@@ -6,13 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
-import { Check, ChevronsUpDown, Plus, ArrowDown, ArrowUp } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, ArrowDown, ArrowUp, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { insertMovement, updateMovement } from "@/lib/movements";
@@ -23,6 +22,7 @@ import {
 import type { Movement, Direction } from "@/lib/types";
 import { useCurrentUser } from "@/lib/current-user";
 import { toast } from "sonner";
+import { ColoredCheckbox } from "./colored-checkbox";
 
 type Props = {
   open: boolean;
@@ -53,6 +53,8 @@ const empty = (initials: string) => ({
   stamp_type: "",
   additional_comments: "",
   elevated_update: false,
+  units2: 0,
+  unit_indicator: "",
 });
 
 export function MovementModal({ open, onOpenChange, editing, movements }: Props) {
@@ -85,6 +87,8 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
         stamp_type: editing.stamp_type ?? "",
         additional_comments: editing.additional_comments ?? "",
         elevated_update: !!editing.elevated_update,
+        units2: Number(editing.units2 ?? 0),
+        unit_indicator: editing.unit_indicator ?? "",
       });
     } else {
       setForm(empty(currentUser));
@@ -94,8 +98,7 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  // Index Batch → Strain (dernier vu) et Strain → Batches
-  const { batchToStrain, strainToBatches, allStrains, allBatches, allProductTypes, allFormats, allDestinations, allStamps } = useMemo(() => {
+  const { batchToStrain, strainToBatches, allStrains, allBatches, allProductTypes, allFormats, allDestinations, allStamps, allIndicators } = useMemo(() => {
     const b2s = new Map<string, string>();
     const s2b = new Map<string, Set<string>>();
     const strains = new Set<string>();
@@ -104,6 +107,7 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
     const formats = new Set<string>();
     const dests = new Set<string>();
     const stamps = new Set<string>();
+    const indicators = new Set<string>();
     for (const m of movements) {
       if (m.batch_id && m.strain) b2s.set(m.batch_id, m.strain);
       if (m.strain) {
@@ -118,6 +122,7 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
       if (m.product_format) formats.add(m.product_format);
       if (m.destination) dests.add(m.destination);
       if (m.stamp_used) stamps.add(m.stamp_used);
+      if (m.unit_indicator) indicators.add(m.unit_indicator);
     }
     return {
       batchToStrain: b2s,
@@ -128,10 +133,11 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
       allFormats: Array.from(new Set([...PRODUCT_FORMATS, ...formats])).sort(),
       allDestinations: Array.from(new Set([...DESTINATIONS, ...dests])).sort(),
       allStamps: Array.from(stamps).sort(),
+      allIndicators: Array.from(indicators).sort(),
     };
   }, [movements]);
 
-  // Batches filtrés par strain sélectionnée
+  // Strain sélectionnée → filtre les batchs. Inversement, un batch sélectionné → force la strain associée.
   const batchOptions = useMemo(() => {
     if (form.strain && strainToBatches.has(form.strain)) {
       return Array.from(strainToBatches.get(form.strain)!).sort();
@@ -139,14 +145,25 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
     return allBatches;
   }, [form.strain, strainToBatches, allBatches]);
 
-  // Auto-fill strain quand un batch connu est choisi
+  const strainOptions = useMemo(() => {
+    // Si un batch est choisi mais aucune strain, on ne restreint pas
+    return allStrains;
+  }, [allStrains]);
+
   const onBatchChange = (v: string) => {
     setForm((f) => {
       const next = { ...f, batch_id: v };
       const s = batchToStrain.get(v);
-      if (s && !f.strain) next.strain = s;
-      // Si strain incohérente, on la remplace par celle du batch
-      if (s && f.strain && f.strain !== s) next.strain = s;
+      if (s) next.strain = s; // filtrage intelligent inverse
+      return next;
+    });
+  };
+
+  const onStrainChange = (v: string) => {
+    setForm((f) => {
+      const next = { ...f, strain: v };
+      // Si le batch actuel n'appartient pas à cette strain, on le vide
+      if (f.batch_id && batchToStrain.get(f.batch_id) !== v) next.batch_id = "";
       return next;
     });
   };
@@ -195,7 +212,7 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto backdrop-blur-sm">
         <DialogHeader>
           <DialogTitle>{editing ? "Modifier l'événement" : "Ajouter un événement"}</DialogTitle>
           <DialogDescription>Toute saisie ici met à jour l'inventaire automatiquement.</DialogDescription>
@@ -235,7 +252,7 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
             <Input type="date" value={form.event_date} onChange={(e) => set("event_date", e.target.value)} />
           </div>
           <div>
-            <Label className="text-xs">Initiales</Label>
+            <Label className="text-xs">Requester Initials</Label>
             <Input value={form.initials} onChange={(e) => set("initials", e.target.value.toUpperCase().slice(0, 4))} className="uppercase font-mono" />
           </div>
 
@@ -243,10 +260,11 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
             <Label className="text-xs">Strain</Label>
             <ComboCreate
               value={form.strain}
-              onChange={(v) => set("strain", v)}
-              options={allStrains}
+              onChange={onStrainChange}
+              options={strainOptions}
               placeholder="Sélectionner ou créer…"
               createLabel="Créer la strain"
+              onClear={() => set("strain", "")}
             />
           </div>
           <div>
@@ -264,6 +282,7 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
               options={batchOptions}
               placeholder="Sélectionner ou créer…"
               createLabel="Créer le lot"
+              onClear={() => set("batch_id", "")}
               mono
             />
           </div>
@@ -276,23 +295,29 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
               options={allProductTypes}
               placeholder="Type…"
               createLabel="Créer le type"
+              onClear={() => set("product_type", "")}
             />
           </div>
           <div>
             <Label className="text-xs">Product Format</Label>
-            <Select value={form.product_format} onValueChange={(v) => set("product_format", v)}>
-              <SelectTrigger><SelectValue placeholder="Format…" /></SelectTrigger>
-              <SelectContent>
-                {allFormats.map((f) => (
-                  <SelectItem key={f} value={f}>{f}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-1">
+              <Select value={form.product_format} onValueChange={(v) => set("product_format", v)}>
+                <SelectTrigger><SelectValue placeholder="Format…" /></SelectTrigger>
+                <SelectContent>
+                  {allFormats.map((f) => (
+                    <SelectItem key={f} value={f}>{f}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.product_format && (
+                <ClearBtn onClick={() => set("product_format", "")} />
+              )}
+            </div>
           </div>
 
           <div>
             <Label className="text-xs flex items-center gap-2">
-              Quantité (g)
+              Quantity (G)
               {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto ({gPerUnit}g/u)</span>}
             </Label>
             <Input type="number" step="0.01" min="0" value={form.quantity_g}
@@ -301,7 +326,7 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
           </div>
           <div>
             <Label className="text-xs flex items-center gap-2">
-              Unités
+              Units
               {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto</span>}
             </Label>
             <Input type="number" min="0" value={form.units}
@@ -317,26 +342,49 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
               options={allDestinations}
               placeholder="Destination…"
               createLabel="Créer une destination"
+              onClear={() => set("destination", "")}
             />
           </div>
 
           <div className="col-span-2">
-            <Label className="text-xs">Commentaire #1</Label>
+            <Label className="text-xs">Comment #1</Label>
             <Input value={form.comment1} onChange={(e) => set("comment1", e.target.value)} />
           </div>
 
-          <div className="col-span-2 flex items-center gap-2 py-1">
-            <Checkbox
-              id="adj"
+          <div className="col-span-2 flex items-center justify-between rounded-md border p-3 bg-muted/30">
+            <div>
+              <div className="text-sm font-semibold">Adjustment Validation</div>
+              <div className="text-xs text-muted-foreground">
+                {form.adjustment_validation ? "Validé" : "Non validé"}
+              </div>
+            </div>
+            <ColoredCheckbox
               checked={form.adjustment_validation}
-              onCheckedChange={(v) => set("adjustment_validation", !!v)}
+              onChange={(v) => set("adjustment_validation", v)}
             />
-            <Label htmlFor="adj" className="text-sm cursor-pointer">Adjustment Validation</Label>
           </div>
 
           <div className="col-span-2">
-            <Label className="text-xs">Commentaire #2</Label>
+            <Label className="text-xs">Comment #2</Label>
             <Input value={form.comment2} onChange={(e) => set("comment2", e.target.value)} />
+          </div>
+
+          <div>
+            <Label className="text-xs">Units 2</Label>
+            <Input type="number" min="0" step="0.01" value={form.units2}
+              onChange={(e) => set("units2", parseFloat(e.target.value) || 0)}
+              className="font-mono" />
+          </div>
+          <div>
+            <Label className="text-xs">Unit Indicator</Label>
+            <ComboCreate
+              value={form.unit_indicator}
+              onChange={(v) => set("unit_indicator", v)}
+              options={allIndicators}
+              placeholder="g / u / kg…"
+              createLabel="Créer l'indicateur"
+              onClear={() => set("unit_indicator", "")}
+            />
           </div>
 
           <div>
@@ -347,18 +395,22 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
               options={allStamps}
               placeholder="N° / réf. timbre…"
               createLabel="Ajouter"
+              onClear={() => set("stamp_used", "")}
               mono
             />
           </div>
           <div>
             <Label className="text-xs">Type de timbre</Label>
-            <Select value={form.stamp_type || "__none__"} onValueChange={(v) => set("stamp_type", v === "__none__" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="Type…" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">—</SelectItem>
-                {STAMP_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-1">
+              <Select value={form.stamp_type || "__none__"} onValueChange={(v) => set("stamp_type", v === "__none__" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="Type…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  {STAMP_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {form.stamp_type && <ClearBtn onClick={() => set("stamp_type", "")} />}
+            </div>
           </div>
 
           <div className="col-span-2">
@@ -367,17 +419,21 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
           </div>
 
           <div className="col-span-2">
-            <Label className="text-xs">Commentaires additionnels</Label>
+            <Label className="text-xs">Additional Comments</Label>
             <Textarea value={form.additional_comments} onChange={(e) => set("additional_comments", e.target.value)} rows={2} />
           </div>
 
-          <div className="col-span-2 flex items-center gap-2 py-1">
-            <Checkbox
-              id="elev"
+          <div className="col-span-2 flex items-center justify-between rounded-md border p-3 bg-muted/30">
+            <div>
+              <div className="text-sm font-semibold">Elevated Update</div>
+              <div className="text-xs text-muted-foreground">
+                {form.elevated_update ? "Oui" : "Non"}
+              </div>
+            </div>
+            <ColoredCheckbox
               checked={form.elevated_update}
-              onCheckedChange={(v) => set("elevated_update", !!v)}
+              onChange={(v) => set("elevated_update", v)}
             />
-            <Label htmlFor="elev" className="text-sm cursor-pointer">Elevated Update</Label>
           </div>
         </div>
 
@@ -392,8 +448,21 @@ export function MovementModal({ open, onOpenChange, editing, movements }: Props)
   );
 }
 
+function ClearBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="h-9 w-9 rounded-md border border-input bg-background hover:bg-accent inline-flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+      title="Réinitialiser"
+    >
+      <X className="h-4 w-4" />
+    </button>
+  );
+}
+
 function ComboCreate({
-  value, onChange, options, placeholder, createLabel, mono,
+  value, onChange, options, placeholder, createLabel, mono, onClear,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -401,48 +470,52 @@ function ComboCreate({
   placeholder: string;
   createLabel: string;
   mono?: boolean;
+  onClear?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const canCreate = search.trim().length > 0 && !options.some((o) => o.toLowerCase() === search.trim().toLowerCase());
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          className={cn("w-full justify-between font-normal", mono && "font-mono", !value && "text-muted-foreground")}
-        >
-          {value || placeholder}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Rechercher…" value={search} onValueChange={setSearch} />
-          <CommandList>
-            <CommandEmpty>Aucun résultat</CommandEmpty>
-            <CommandGroup>
-              {options.map((o) => (
-                <CommandItem key={o} value={o} onSelect={() => { onChange(o); setOpen(false); setSearch(""); }}>
-                  <Check className={cn("mr-2 h-4 w-4", o === value ? "opacity-100" : "opacity-0")} />
-                  <span className={mono ? "font-mono text-sm" : ""}>{o}</span>
-                </CommandItem>
-              ))}
-              {canCreate && (
-                <CommandItem
-                  value={`__create__${search}`}
-                  onSelect={() => { onChange(search.trim()); setOpen(false); setSearch(""); }}
-                  className="text-primary"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  {createLabel} : <span className={cn("ml-1 font-semibold", mono && "font-mono")}>{search.trim()}</span>
-                </CommandItem>
-              )}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <div className="flex items-center gap-1">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            className={cn("w-full justify-between font-normal", mono && "font-mono", !value && "text-muted-foreground")}
+          >
+            <span className="truncate">{value || placeholder}</span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Rechercher…" value={search} onValueChange={setSearch} />
+            <CommandList>
+              <CommandEmpty>Aucun résultat</CommandEmpty>
+              <CommandGroup>
+                {options.map((o) => (
+                  <CommandItem key={o} value={o} onSelect={() => { onChange(o); setOpen(false); setSearch(""); }}>
+                    <Check className={cn("mr-2 h-4 w-4", o === value ? "opacity-100" : "opacity-0")} />
+                    <span className={mono ? "font-mono text-sm" : ""}>{o}</span>
+                  </CommandItem>
+                ))}
+                {canCreate && (
+                  <CommandItem
+                    value={`__create__${search}`}
+                    onSelect={() => { onChange(search.trim()); setOpen(false); setSearch(""); }}
+                    className="text-primary"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    {createLabel} : <span className={cn("ml-1 font-semibold", mono && "font-mono")}>{search.trim()}</span>
+                  </CommandItem>
+                )}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {value && onClear && <ClearBtn onClick={onClear} />}
+    </div>
   );
 }
