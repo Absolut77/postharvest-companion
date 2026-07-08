@@ -1,41 +1,35 @@
-export const PRODUCT_TYPES = ["Fleur", "Pré-roulé", "Trim", "Kief", "Concentré", "Autre"];
-export const PRODUCT_FORMATS = ["Bulk", "Sample", "Pré-pack", "Rétention", "R&D", "Autre"];
-export const DESTINATIONS = [
-  "Réception",
-  "Sortie de l'Installation",
-  "Sortie pour Échantillonnage",
-  "Retour d'Échantillonnage",
-  "Expédition",
-  "Transfert Interne",
-  "Rétention Archive",
-  "Destruction",
-  "Autre",
+export const DIRECTIONS = ["IN", "OUT"] as const;
+
+export const PRODUCT_FORMATS = ["Bulk", "Sample", "Master Case", "Units"];
+
+export const PRODUCT_TYPES = [
+  "Flower",
+  "Flower 1g",
+  "Flower 3.5g",
+  "Flower 7g",
+  "Flower 14g",
+  "Flower 28g",
+  "Pre-roll 0.35g",
+  "Pre-roll 0.5g",
+  "Pre-roll 1.5g",
+  "Pre-roll 2.5g",
+  "Pre-roll 3.5g",
+  "Trim",
 ];
 
-export const OUT_DESTINATIONS = new Set([
-  "Sortie de l'Installation",
-  "Sortie pour Échantillonnage",
-  "Expédition",
-  "Destruction",
-]);
-export const IN_DESTINATIONS = new Set([
-  "Réception",
-  "Retour d'Échantillonnage",
-]);
+export const REASONS_IN = [
+  "In from Cultivation",
+  "In From External",
+  "Back from Sampling",
+  "Back from Packaging",
+  "Back from Rework",
+];
 
-export function csvEscape(v: unknown): string {
-  const s = String(v ?? "");
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-export function downloadCSV(filename: string, rows: (string | number)[][]) {
-  const csv = rows.map((r) => r.map(csvEscape).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+export const REASONS_OUT = [
+  "Out of Facility",
+  "Out For Packaging",
+  "Out for Sampling",
+  "Out for Rework",
+  "Out For Destruction",
+  "Standby for Shippment",
+];

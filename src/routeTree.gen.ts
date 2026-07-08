@@ -9,30 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as JournalRouteImport } from './routes/journal'
-import { Route as HarvestRouteImport } from './routes/harvest'
-import { Route as CuringRouteImport } from './routes/curing'
+import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as IndexRouteImport } from './routes/index'
 
-const ReportsRoute = ReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const JournalRoute = JournalRouteImport.update({
   id: '/journal',
   path: '/journal',
   getParentRoute: () => rootRouteImport,
 } as any)
-const HarvestRoute = HarvestRouteImport.update({
-  id: '/harvest',
-  path: '/harvest',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CuringRoute = CuringRouteImport.update({
-  id: '/curing',
-  path: '/curing',
+const InventoryRoute = InventoryRouteImport.update({
+  id: '/inventory',
+  path: '/inventory',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -43,51 +31,36 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/curing': typeof CuringRoute
-  '/harvest': typeof HarvestRoute
+  '/inventory': typeof InventoryRoute
   '/journal': typeof JournalRoute
-  '/reports': typeof ReportsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/curing': typeof CuringRoute
-  '/harvest': typeof HarvestRoute
+  '/inventory': typeof InventoryRoute
   '/journal': typeof JournalRoute
-  '/reports': typeof ReportsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/curing': typeof CuringRoute
-  '/harvest': typeof HarvestRoute
+  '/inventory': typeof InventoryRoute
   '/journal': typeof JournalRoute
-  '/reports': typeof ReportsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/curing' | '/harvest' | '/journal' | '/reports'
+  fullPaths: '/' | '/inventory' | '/journal'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/curing' | '/harvest' | '/journal' | '/reports'
-  id: '__root__' | '/' | '/curing' | '/harvest' | '/journal' | '/reports'
+  to: '/' | '/inventory' | '/journal'
+  id: '__root__' | '/' | '/inventory' | '/journal'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CuringRoute: typeof CuringRoute
-  HarvestRoute: typeof HarvestRoute
+  InventoryRoute: typeof InventoryRoute
   JournalRoute: typeof JournalRoute
-  ReportsRoute: typeof ReportsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/reports': {
-      id: '/reports'
-      path: '/reports'
-      fullPath: '/reports'
-      preLoaderRoute: typeof ReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/journal': {
       id: '/journal'
       path: '/journal'
@@ -95,18 +68,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JournalRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/harvest': {
-      id: '/harvest'
-      path: '/harvest'
-      fullPath: '/harvest'
-      preLoaderRoute: typeof HarvestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/curing': {
-      id: '/curing'
-      path: '/curing'
-      fullPath: '/curing'
-      preLoaderRoute: typeof CuringRouteImport
+    '/inventory': {
+      id: '/inventory'
+      path: '/inventory'
+      fullPath: '/inventory'
+      preLoaderRoute: typeof InventoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -121,10 +87,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CuringRoute: CuringRoute,
-  HarvestRoute: HarvestRoute,
+  InventoryRoute: InventoryRoute,
   JournalRoute: JournalRoute,
-  ReportsRoute: ReportsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
