@@ -23,6 +23,8 @@ export type Movement = {
   stamp_type: string;
   additional_comments: string;
   elevated_update: boolean;
+  units2: number;
+  unit_indicator: string;
   created_at?: string;
   updated_at?: string;
 };
