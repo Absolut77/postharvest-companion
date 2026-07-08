@@ -187,12 +187,13 @@ function decomposeBags(entries: BagEntry[]): BagBreakdown {
 
 
 function BatchDetail({
-  open, onOpenChange, stock, movements,
+  open, onOpenChange, stock, movements, onLogEvent,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   stock: ReturnType<typeof computeInventory>[number] | null | undefined;
   movements: Movement[];
+  onLogEvent: (batchId: string, strain: string, qualif: Qualification) => void;
 }) {
   const [section, setSection] = useState<SectionId>("inventory");
   const [qualif, setQualif] = useState<"__all__" | Qualification>("__all__");
