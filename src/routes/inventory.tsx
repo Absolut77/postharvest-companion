@@ -280,10 +280,10 @@ function BatchDetail({
           <div className="flex-1 overflow-y-auto p-6">
             {section === "inventory" && (
               <InventorySection
-                byCategory={byCategory}
-                category={category}
-                setCategory={setCategory}
-                totalG={totalG}
+                byQualif={byQualif}
+                qualif={qualif}
+                setQualif={setQualif}
+                totalNet={totalNet}
               />
             )}
             {section === "history" && <HistorySection movements={movements} />}
