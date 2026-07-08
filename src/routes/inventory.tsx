@@ -140,9 +140,9 @@ const QUALIFICATIONS = [
 ] as const;
 type Qualification = typeof QUALIFICATIONS[number];
 
-/** Détecte la qualification depuis Comment #1 (fallback: product_type). */
+/** Détecte la qualification depuis Comment #2 (fallback: Comment #1 / product_type). */
 function detectQualification(m: Movement): Qualification | null {
-  const hay = `${m.comment1} ${m.product_type}`.toLowerCase();
+  const hay = `${m.comment2} ${m.comment1} ${m.product_type}`.toLowerCase();
   if (/hand[\s-]?trim/.test(hay)) return "Handtrim Flower";
   if (/large/.test(hay)) return "Large Flower";
   if (/medium|\bmed\b/.test(hay)) return "Medium Flower";
