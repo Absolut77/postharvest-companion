@@ -516,7 +516,7 @@ function InventorySection({
 
 function formatBags(b: BagBreakdown): string {
   const parts: string[] = [];
-  if (b.fullBags > 0) parts.push(`${b.fullBags} sac${b.fullBags > 1 ? "s" : ""} de 1000 g`);
+  if (b.fullBags > 0) parts.push(`${b.fullBags} sac${b.fullBags > 1 ? "s" : ""} de ${b.bagSize} g`);
   for (const r of b.remainders) parts.push(`1 sac de ${r.toFixed(0)} g`);
   return parts.length ? parts.join(" + ") : "—";
 }
