@@ -59,7 +59,7 @@ const empty = (initials: string) => ({
   unit_indicator: "",
 });
 
-export function MovementModal({ open, onOpenChange, editing, movements, defaultDate }: Props) {
+export function MovementModal({ open, onOpenChange, editing, movements, defaultDate, prefill }: Props) {
   const currentUser = useCurrentUser();
   const [form, setForm] = useState(empty(currentUser));
   const qc = useQueryClient();
@@ -93,9 +93,13 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
         unit_indicator: editing.unit_indicator ?? "",
       });
     } else {
-      setForm({ ...empty(currentUser), event_date: defaultDate ?? new Date().toISOString().slice(0, 10) });
+      setForm({
+        ...empty(currentUser),
+        event_date: defaultDate ?? new Date().toISOString().slice(0, 10),
+        ...(prefill ?? {}),
+      });
     }
-  }, [open, editing, currentUser, defaultDate]);
+  }, [open, editing, currentUser, defaultDate, prefill]);
 
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
