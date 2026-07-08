@@ -466,9 +466,11 @@ function InventorySection({
         </div>
         <div className="text-sm font-mono">{formatBags(bags)}</div>
         <div className="text-xs text-muted-foreground mt-2">
-          Basé sur les entrées "In from Cultivation" (sacs standards ~1000 g).
+          Décomposition dérivée de la colonne <strong>Units</strong> du Journal :
+          par entrée, (Units − 1) sacs pleins de 1000 g + 1 sac du reste.
         </div>
       </Card>
+
 
       {b.inEntries.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">
