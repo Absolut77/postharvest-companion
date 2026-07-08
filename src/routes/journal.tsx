@@ -212,7 +212,7 @@ function Journal() {
                   key={m.id}
                   className={cn(
                     "border-b hover:bg-primary/5 transition-colors",
-                    i % 2 === 0 ? "bg-background" : "bg-muted/30",
+                    i % 2 === 0 ? "bg-background" : "bg-muted/60",
                     m.direction === "OUT" && "border-l-2 border-l-red-400/40",
                     m.direction === "IN" && "border-l-2 border-l-emerald-400/50",
                   )}
@@ -242,7 +242,7 @@ function Journal() {
                   </td>
                   <td className={cn(
                     "px-2 py-1.5 sticky right-0",
-                    i % 2 === 0 ? "bg-background" : "bg-muted/30",
+                    i % 2 === 0 ? "bg-background" : "bg-muted/60",
                   )}>
                     <div className="flex gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(m)} title="Éditer">
