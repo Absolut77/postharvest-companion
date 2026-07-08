@@ -131,23 +131,44 @@ const SECTIONS = [
 
 type SectionId = typeof SECTIONS[number]["id"];
 
-const CATEGORIES = ["Big Hand Trim", "Big", "Medium", "Small", "Trim", "Sample", "Rétention"] as const;
-type Category = typeof CATEGORIES[number];
+const QUALIFICATIONS = [
+  "Handtrim Flower",
+  "Large Flower",
+  "Medium Flower",
+  "Small Flower",
+  "Trim",
+] as const;
+type Qualification = typeof QUALIFICATIONS[number];
 
-/** Catégorise un mouvement en cherchant des mots-clés dans product_type/format/comments. */
-function categorize(m: Movement): Category {
-  const hay = [
-    m.product_type, m.product_format, m.comment1, m.comment2,
-    m.additional_comments, m.destination, m.reason,
-  ].join(" ").toLowerCase();
-  if (/retention|rétention/.test(hay)) return "Rétention";
-  if (/big.*hand.*trim/.test(hay)) return "Big Hand Trim";
-  if (/sample|échantillon|echantillon/.test(hay)) return "Sample";
-  if (/\btrim\b/.test(hay)) return "Trim";
-  if (/\bmedium\b|\bmed\b/.test(hay)) return "Medium";
-  if (/\bsmall\b/.test(hay)) return "Small";
-  if (/\bbig\b/.test(hay)) return "Big";
-  return "Big"; // défaut : bulk = Big
+/** Détecte la qualification depuis Comment #1 (fallback: product_type). */
+function detectQualification(m: Movement): Qualification | null {
+  const hay = `${m.comment1} ${m.product_type}`.toLowerCase();
+  if (/hand[\s-]?trim/.test(hay)) return "Handtrim Flower";
+  if (/large/.test(hay)) return "Large Flower";
+  if (/medium|\bmed\b/.test(hay)) return "Medium Flower";
+  if (/small/.test(hay)) return "Small Flower";
+  if (/trim/.test(hay)) return "Trim";
+  return null;
+}
+
+const BAG_SIZE_G = 1000;
+
+type BagBreakdown = {
+  fullBags: number;      // sacs de 1000g
+  remainders: number[];  // restes (chaque entrée = un sac partiel)
+};
+
+function decomposeBags(entries: number[]): BagBreakdown {
+  let full = 0;
+  const remainders: number[] = [];
+  for (const q of entries) {
+    if (q <= 0) continue;
+    const f = Math.floor(q / BAG_SIZE_G);
+    const r = +(q - f * BAG_SIZE_G).toFixed(2);
+    full += f;
+    if (r > 0.001) remainders.push(r);
+  }
+  return { fullBags: full, remainders };
 }
 
 function BatchDetail({
