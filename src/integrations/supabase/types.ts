@@ -38,7 +38,9 @@ export type Database = {
           stamp_type: string
           stamp_used: string
           strain: string
+          unit_indicator: string
           units: number
+          units2: number
           updated_at: string
         }
         Insert: {
@@ -64,7 +66,9 @@ export type Database = {
           stamp_type?: string
           stamp_used?: string
           strain: string
+          unit_indicator?: string
           units?: number
+          units2?: number
           updated_at?: string
         }
         Update: {
@@ -90,7 +94,9 @@ export type Database = {
           stamp_type?: string
           stamp_used?: string
           strain?: string
+          unit_indicator?: string
           units?: number
+          units2?: number
           updated_at?: string
         }
         Relationships: []

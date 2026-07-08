@@ -1,0 +1,3 @@
+ALTER TABLE public.movements
+  ADD COLUMN IF NOT EXISTS units2 numeric NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS unit_indicator text NOT NULL DEFAULT '';
