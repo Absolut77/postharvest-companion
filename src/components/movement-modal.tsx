@@ -340,6 +340,27 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
   const returnTotalG = returnBags.reduce((s, b) => s + (Number(b.grams) || 0), 0);
   const returnUnits = returnBags.filter((b) => (Number(b.grams) || 0) > 0).length;
 
+  // ============= IN Cultivation: multi-qualif intake builder =============
+  type CultRow = { id: string; qualif: string; units: number; grams: number; gramsTouched: boolean };
+  const [cultRows, setCultRows] = useState<CultRow[]>([]);
+  const addCultRow = () => setCultRows((r) => [...r, { id: crypto.randomUUID(), qualif: "", units: 0, grams: 0, gramsTouched: false }]);
+  const removeCultRow = (id: string) => setCultRows((r) => r.filter((b) => b.id !== id));
+  const updateCultRow = (id: string, patch: Partial<CultRow>) =>
+    setCultRows((r) => r.map((b) => {
+      if (b.id !== id) return b;
+      const next = { ...b, ...patch };
+      // Auto-calc grams = units * bagSize when qualif is a bag qualification and grams not manually edited
+      const isBagQualif = (QUALIFICATIONS as readonly string[]).includes(next.qualif);
+      if (isBagQualif && !next.gramsTouched) {
+        next.grams = +(Number(next.units || 0) * bagSizeFor(next.qualif as Qualification)).toFixed(2);
+      }
+      return next;
+    }));
+
+  const cultTotalG = cultRows.reduce((s, r) => s + (Number(r.grams) || 0), 0);
+  const cultTotalUnits = cultRows.reduce((s, r) => s + (Number(r.units) || 0), 0);
+  const cultValidRows = cultRows.filter((r) => r.qualif && (Number(r.units) > 0 || Number(r.grams) > 0));
+
   // Sync form from return builder
   useEffect(() => {
     if (!showReturnBuilder) return;
@@ -354,6 +375,19 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showReturnBuilder, returnTotalG, returnUnits]);
+
+  // Seed one cultivation row when entering that mode; sync form totals so validation passes
+  useEffect(() => {
+    if (showCultivationEntry && cultRows.length === 0) {
+      setCultRows([{ id: crypto.randomUUID(), qualif: "", units: 0, grams: 0, gramsTouched: false }]);
+    }
+  }, [showCultivationEntry]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showCultivationEntry) return;
+    setForm((f) => ({ ...f, quantity_g: +cultTotalG.toFixed(2), units: cultTotalUnits }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCultivationEntry, cultTotalG, cultTotalUnits]);
 
   // Auto-set product_format from sub-type
   useEffect(() => {
