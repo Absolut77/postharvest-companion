@@ -194,7 +194,65 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     });
   };
 
-  const mutation = useMutation({
+  // ============= OUT bag picker =============
+  const isOut = form.direction === "OUT";
+  const isEditing = !!editing;
+  const showBagPicker = isOut && !isEditing;
+
+  const [selectedBagKeys, setSelectedBagKeys] = useState<Set<string>>(new Set());
+
+  // Reset selection when batch changes or modal reopens
+  useEffect(() => { setSelectedBagKeys(new Set()); }, [form.batch_id, open]);
+
+  const availableBags = useMemo<AvailableBag[]>(
+    () => (showBagPicker && form.batch_id ? computeAvailableBags(form.batch_id, movements) : []),
+    [showBagPicker, form.batch_id, movements],
+  );
+  const netByQualif = useMemo(
+    () => (showBagPicker && form.batch_id ? computeNetByQualification(form.batch_id, movements) : new Map()),
+    [showBagPicker, form.batch_id, movements],
+  );
+
+  const bagsByQualif = useMemo(() => {
+    const map = new Map<string, AvailableBag[]>();
+    for (const b of availableBags) {
+      if (!map.has(b.qualification)) map.set(b.qualification, []);
+      map.get(b.qualification)!.push(b);
+    }
+    return map;
+  }, [availableBags]);
+
+  const selectedBags = useMemo(
+    () => availableBags.filter((b) => selectedBagKeys.has(b.key)),
+    [availableBags, selectedBagKeys],
+  );
+  const selectedTotalG = selectedBags.reduce((s, b) => s + b.grams, 0);
+  const selectedUnits = selectedBags.length;
+
+  // Sync form fields from selected bags
+  useEffect(() => {
+    if (!showBagPicker) return;
+    const qualifs = new Set(selectedBags.map((b) => b.qualification));
+    const singleQualif = qualifs.size === 1 ? Array.from(qualifs)[0] : "";
+    setForm((f) => ({
+      ...f,
+      quantity_g: +selectedTotalG.toFixed(2),
+      units: selectedUnits,
+      product_format: f.product_format || "Bulk",
+      comment2: singleQualif || f.comment2,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBagPicker, selectedTotalG, selectedUnits]);
+
+  const toggleBag = (key: string) => {
+    setSelectedBagKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+
     mutationFn: async () => {
       const payload = { ...form, reason: form.destination || form.reason };
       if (editing) return updateMovement(editing.id, payload);
