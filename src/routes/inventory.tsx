@@ -318,17 +318,36 @@ function BatchDetail({
                 <div className="text-xs text-muted-foreground">{stock.units} unités · {stock.movements} mvts</div>
               </div>
               {(() => {
-                const tempOut = movements.reduce((s, m) => {
-                  if (m.direction === "OUT" && /for\s*event/i.test(`${m.destination} ${m.reason}`)) return s + Number(m.quantity_g);
-                  if (m.direction === "IN" && /back\s*from\s*event/i.test(m.reason)) return s - Number(m.quantity_g);
-                  return s;
-                }, 0);
-                if (tempOut <= 0.01) return null;
+                // Compte le stock en attente de retour : chaque catégorie temporaire (Packaging / Sampling / Rework)
+                // est soldée par ses IN "Back from ..." correspondants.
+                const cats: Array<{ key: string; outRe: RegExp; inRe: RegExp; label: string }> = [
+                  { key: "packaging", outRe: /out\s*for\s*packaging/i, inRe: /back\s*from\s*packaging/i, label: "Packaging" },
+                  { key: "sampling",  outRe: /out\s*for\s*sampling/i,  inRe: /back\s*from\s*sampling/i,  label: "Sampling" },
+                  { key: "rework",    outRe: /out\s*for\s*rework/i,    inRe: /back\s*from\s*rework/i,    label: "Rework" },
+                ];
+                const balances = cats.map((c) => {
+                  const out = movements
+                    .filter((m) => m.direction === "OUT" && c.outRe.test(m.reason))
+                    .reduce((s, m) => s + Number(m.quantity_g), 0);
+                  const back = movements
+                    .filter((m) => m.direction === "IN" && c.inRe.test(m.reason))
+                    .reduce((s, m) => s + Number(m.quantity_g), 0);
+                  return { ...c, net: out - back };
+                }).filter((b) => b.net > 0.01);
+                if (balances.length === 0) return null;
+                const total = balances.reduce((s, b) => s + b.net, 0);
                 return (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2">
-                    <div className="text-[10px] uppercase text-amber-700 font-semibold">En cours — événement</div>
-                    <div className="text-sm font-mono font-bold text-amber-800">{tempOut.toFixed(1)} g</div>
-                    <div className="text-[10px] text-amber-700">Sorti pour un événement, retour attendu.</div>
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] uppercase text-amber-700 font-semibold">En cours — retour attendu</div>
+                      <div className="text-sm font-mono font-bold text-amber-800">{total.toFixed(1)} g</div>
+                    </div>
+                    {balances.map((b) => (
+                      <div key={b.key} className="flex items-center justify-between text-[11px] text-amber-800">
+                        <span>{b.label}</span>
+                        <span className="font-mono">{b.net.toFixed(1)} g</span>
+                      </div>
+                    ))}
                   </div>
                 );
               })()}
