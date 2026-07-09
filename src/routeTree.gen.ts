@@ -11,7 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as InventoryRouteImport } from './routes/inventory'
+import { Route as BatchesRouteImport } from './routes/batches'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BatchesIndexRouteImport } from './routes/batches.index'
+import { Route as BatchesBatchIdRouteImport } from './routes/batches.$batchId'
 
 const JournalRoute = JournalRouteImport.update({
   id: '/journal',
@@ -23,38 +26,75 @@ const InventoryRoute = InventoryRouteImport.update({
   path: '/inventory',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BatchesRoute = BatchesRouteImport.update({
+  id: '/batches',
+  path: '/batches',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BatchesIndexRoute = BatchesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => BatchesRoute,
+} as any)
+const BatchesBatchIdRoute = BatchesBatchIdRouteImport.update({
+  id: '/$batchId',
+  path: '/$batchId',
+  getParentRoute: () => BatchesRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/batches': typeof BatchesRouteWithChildren
   '/inventory': typeof InventoryRoute
   '/journal': typeof JournalRoute
+  '/batches/$batchId': typeof BatchesBatchIdRoute
+  '/batches/': typeof BatchesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/inventory': typeof InventoryRoute
   '/journal': typeof JournalRoute
+  '/batches/$batchId': typeof BatchesBatchIdRoute
+  '/batches': typeof BatchesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/batches': typeof BatchesRouteWithChildren
   '/inventory': typeof InventoryRoute
   '/journal': typeof JournalRoute
+  '/batches/$batchId': typeof BatchesBatchIdRoute
+  '/batches/': typeof BatchesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inventory' | '/journal'
+  fullPaths:
+    | '/'
+    | '/batches'
+    | '/inventory'
+    | '/journal'
+    | '/batches/$batchId'
+    | '/batches/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inventory' | '/journal'
-  id: '__root__' | '/' | '/inventory' | '/journal'
+  to: '/' | '/inventory' | '/journal' | '/batches/$batchId' | '/batches'
+  id:
+    | '__root__'
+    | '/'
+    | '/batches'
+    | '/inventory'
+    | '/journal'
+    | '/batches/$batchId'
+    | '/batches/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BatchesRoute: typeof BatchesRouteWithChildren
   InventoryRoute: typeof InventoryRoute
   JournalRoute: typeof JournalRoute
 }
@@ -75,6 +115,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InventoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/batches': {
+      id: '/batches'
+      path: '/batches'
+      fullPath: '/batches'
+      preLoaderRoute: typeof BatchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -82,24 +129,42 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/batches/': {
+      id: '/batches/'
+      path: '/'
+      fullPath: '/batches/'
+      preLoaderRoute: typeof BatchesIndexRouteImport
+      parentRoute: typeof BatchesRoute
+    }
+    '/batches/$batchId': {
+      id: '/batches/$batchId'
+      path: '/$batchId'
+      fullPath: '/batches/$batchId'
+      preLoaderRoute: typeof BatchesBatchIdRouteImport
+      parentRoute: typeof BatchesRoute
+    }
   }
 }
 
+interface BatchesRouteChildren {
+  BatchesBatchIdRoute: typeof BatchesBatchIdRoute
+  BatchesIndexRoute: typeof BatchesIndexRoute
+}
+
+const BatchesRouteChildren: BatchesRouteChildren = {
+  BatchesBatchIdRoute: BatchesBatchIdRoute,
+  BatchesIndexRoute: BatchesIndexRoute,
+}
+
+const BatchesRouteWithChildren =
+  BatchesRoute._addFileChildren(BatchesRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BatchesRoute: BatchesRouteWithChildren,
   InventoryRoute: InventoryRoute,
   JournalRoute: JournalRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

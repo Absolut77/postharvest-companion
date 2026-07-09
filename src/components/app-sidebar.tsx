@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, ClipboardList, Boxes } from "lucide-react";
+import { LayoutDashboard, ClipboardList, Boxes, Sprout } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +14,10 @@ import {
 
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Batches", url: "/batches", icon: Sprout },
+];
+
+const legacy = [
   { title: "Journal (Log 2026)", url: "/journal", icon: ClipboardList },
   { title: "Bulk Inventory", url: "/inventory", icon: Boxes },
 ];
@@ -37,6 +41,23 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
+                <SidebarMenuItem key={item.url}>
+                  <SidebarMenuButton asChild isActive={pathname === item.url}>
+                    <Link to={item.url} className="flex items-center gap-2">
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Legacy</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {legacy.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton asChild isActive={pathname === item.url}>
                     <Link to={item.url} className="flex items-center gap-2">
