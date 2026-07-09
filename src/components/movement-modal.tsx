@@ -214,12 +214,12 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
   useEffect(() => { setSelectedBagKeys(new Set()); }, [form.batch_id, open]);
 
   const availableBags = useMemo<AvailableBag[]>(
-    () => (showBagPicker && form.batch_id ? computeAvailableBags(form.batch_id, movements) : []),
-    [showBagPicker, form.batch_id, movements],
+    () => (needsBagPickerData && form.batch_id ? computeAvailableBags(form.batch_id, movements) : []),
+    [needsBagPickerData, form.batch_id, movements],
   );
   const netByQualif = useMemo(
-    () => (showBagPicker && form.batch_id ? computeNetByQualification(form.batch_id, movements) : new Map()),
-    [showBagPicker, form.batch_id, movements],
+    () => (needsBagPickerData && form.batch_id ? computeNetByQualification(form.batch_id, movements) : new Map()),
+    [needsBagPickerData, form.batch_id, movements],
   );
 
   const bagsByQualif = useMemo(() => {
