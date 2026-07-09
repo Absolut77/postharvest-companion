@@ -449,7 +449,9 @@ export async function exportToXlsx(): Promise<{ appended: number }> {
   const tableRef = getTableRef(tableXml);
   const tableEndRow = tableRef ? rowNumFromRef(tableRef.split(":").pop() ?? tableRef) : 1;
   const sheetEndRow = maxRowInSheetXml(sheetXml);
-  const appendAt = Math.max(tableEndRow, sheetEndRow, 1) + 1;
+  // Toujours empiler juste après la dernière ligne du tableau structuré Excel, pour
+  // que les nouvelles lignes fassent partie de la Table (filtres + styles hérités).
+  const appendAt = (tableRef ? tableEndRow : sheetEndRow) + 1;
   const newEndRow = appendAt + appRows.length - 1;
   const styles = findReferenceStyles(sheetXml, Math.max(tableEndRow, sheetEndRow));
 
@@ -462,6 +464,11 @@ export async function exportToXlsx(): Promise<{ appended: number }> {
   if (newRowsXml) {
     sheetXml = appendRowsToSheetXml(sheetXml, newRowsXml);
     sheetXml = updateSheetDimension(sheetXml, newEndRow);
+    // Certaines feuilles portent leur propre <autoFilter> (indépendant de la Table)
+    sheetXml = sheetXml.replace(
+      /(<autoFilter\b[^>]*\bref=")([^"]+)(")/,
+      (_m, a, ref, b) => `${a}${extendRefRows(ref, newEndRow)}${b}`,
+    );
     zip.file(sheetPath, sheetXml);
 
     if (tablePath && tableXml && tableRef) {
@@ -474,6 +481,8 @@ export async function exportToXlsx(): Promise<{ appended: number }> {
   const blob = await zip.generateAsync({
     type: "blob",
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
   });
   const stamp = new Date().toISOString().slice(0, 10);
   const url = URL.createObjectURL(blob);
