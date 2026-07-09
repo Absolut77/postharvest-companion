@@ -23,7 +23,7 @@ import type { Movement, Direction } from "@/lib/types";
 import { useCurrentUser } from "@/lib/current-user";
 import { toast } from "sonner";
 import { ColoredCheckbox } from "./colored-checkbox";
-import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS, type Qualification } from "@/lib/bags";
+import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS, type Qualification, bagSizeFor } from "@/lib/bags";
 import {
   OUT_CATEGORIES, FACILITY_PURPOSES, IN_CATEGORIES,
   CULTIVATION_QUALIFS, PROVINCES,
@@ -317,6 +317,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       setPackagedBatch(editing.comment2 || "");
       setRecipient(editing.additional_comments || "");
       setReturnBags([]);
+      setCultRows([]);
       setCultivationQualif(editing.comment2 || "");
     } else {
       setInCat("cultivation");
@@ -327,6 +328,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       setPackagedBatch("");
       setRecipient("");
       setReturnBags([]);
+      setCultRows([]);
     }
   }, [open, editing]);
 
@@ -339,6 +341,27 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
 
   const returnTotalG = returnBags.reduce((s, b) => s + (Number(b.grams) || 0), 0);
   const returnUnits = returnBags.filter((b) => (Number(b.grams) || 0) > 0).length;
+
+  // ============= IN Cultivation: multi-qualif intake builder =============
+  type CultRow = { id: string; qualif: string; units: number; grams: number; gramsTouched: boolean };
+  const [cultRows, setCultRows] = useState<CultRow[]>([]);
+  const addCultRow = () => setCultRows((r) => [...r, { id: crypto.randomUUID(), qualif: "", units: 0, grams: 0, gramsTouched: false }]);
+  const removeCultRow = (id: string) => setCultRows((r) => r.filter((b) => b.id !== id));
+  const updateCultRow = (id: string, patch: Partial<CultRow>) =>
+    setCultRows((r) => r.map((b) => {
+      if (b.id !== id) return b;
+      const next = { ...b, ...patch };
+      // Auto-calc grams = units * bagSize when qualif is a bag qualification and grams not manually edited
+      const isBagQualif = (QUALIFICATIONS as readonly string[]).includes(next.qualif);
+      if (isBagQualif && !next.gramsTouched) {
+        next.grams = +(Number(next.units || 0) * bagSizeFor(next.qualif as Qualification)).toFixed(2);
+      }
+      return next;
+    }));
+
+  const cultTotalG = cultRows.reduce((s, r) => s + (Number(r.grams) || 0), 0);
+  const cultTotalUnits = cultRows.reduce((s, r) => s + (Number(r.units) || 0), 0);
+  const cultValidRows = cultRows.filter((r) => r.qualif && (Number(r.units) > 0 || Number(r.grams) > 0));
 
   // Sync form from return builder
   useEffect(() => {
@@ -354,6 +377,19 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showReturnBuilder, returnTotalG, returnUnits]);
+
+  // Seed one cultivation row when entering that mode; sync form totals so validation passes
+  useEffect(() => {
+    if (showCultivationEntry && cultRows.length === 0) {
+      setCultRows([{ id: crypto.randomUUID(), qualif: "", units: 0, grams: 0, gramsTouched: false }]);
+    }
+  }, [showCultivationEntry]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showCultivationEntry) return;
+    setForm((f) => ({ ...f, quantity_g: +cultTotalG.toFixed(2), units: cultTotalUnits }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCultivationEntry, cultTotalG, cultTotalUnits]);
 
   // Auto-set product_format from sub-type
   useEffect(() => {
@@ -428,11 +464,11 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     if (isIn) {
       switch (inCat) {
         case "cultivation":
-          return { ...base, subtitle: "Réception depuis Cultivation",
+          return { ...base, subtitle: "Réception depuis Cultivation (multi-qualifications)",
             productType: SHOW("Type de produit", "Flower, Trim…"),
-            productFormat: SHOW("Format (auto selon qualification)"),
-            quantity: SHOW("Quantité totale (g)"),
-            units: SHOW("Nombre de sacs"),
+            productFormat: HIDE,
+            quantity: HIDE,
+            units: HIDE,
             destination: HIDE, comment2: HIDE,
             comment1: SHOW("Note cultivation (facultatif)"),
             additionalComments: SHOW("Commentaires additionnels (facultatif)"),
@@ -580,6 +616,27 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       let unit_indicator = form.unit_indicator;
       let additional_comments = form.additional_comments;
 
+      // === IN Cultivation multi-qualifs: one INSERT per row ===
+      if (!editing && isIn && inCat === "cultivation") {
+        const rows = cultValidRows;
+        if (rows.length === 0) throw new Error("Ajoute au moins une qualification avec une quantité");
+        const cfg = IN_CATEGORIES.find((c) => c.id === "cultivation")!;
+        const results = [];
+        for (const r of rows) {
+          const payload = {
+            ...form,
+            reason: cfg.reason,
+            destination: "In",
+            comment2: r.qualif,
+            product_format: formatForCultivationQualif(r.qualif),
+            quantity_g: +(Number(r.grams) || 0).toFixed(2),
+            units: Number(r.units) || 0,
+          };
+          results.push(await insertMovement(payload));
+        }
+        return { multi: true, count: results.length };
+      }
+
       if (!editing) {
         if (isIn) {
           const cfg = IN_CATEGORIES.find((c) => c.id === inCat)!;
@@ -606,9 +663,10 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       if (editing) return updateMovement(editing.id, payload);
       return insertMovement(payload);
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ["movements"] });
-      toast.success(editing ? "Ligne mise à jour" : "Événement ajouté");
+      if (res?.multi) toast.success(`${res.count} ligne${res.count > 1 ? "s" : ""} ajoutée${res.count > 1 ? "s" : ""}`);
+      else toast.success(editing ? "Ligne mise à jour" : "Événement ajouté");
       onOpenChange(false);
     },
     onError: (e: any) => toast.error(e.message ?? "Erreur"),
@@ -719,29 +777,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
               </div>
             )}
 
-            {/* Second-tier: IN Cultivation qualification */}
-            {!isOut && inCat === "cultivation" && (
-              <div>
-                <Label className="text-xs mb-1 block">Qualification (Comment #2)</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {CULTIVATION_QUALIFS.map((q) => (
-                    <button
-                      key={q}
-                      type="button"
-                      onClick={() => setCultivationQualif(q)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-xs border transition",
-                        cultivationQualif === q
-                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-semibold"
-                          : "border-border text-muted-foreground hover:bg-accent",
-                      )}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Note: pour Cultivation, la qualification (Comment #2) est saisie dans le tableau ci-dessous */}
           </div>
         )}
 
@@ -971,6 +1007,88 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
               </Button>
               <div className="text-[11px] text-muted-foreground">
                 Quantité et Units se calculent à partir des sacs. La qualification renseigne automatiquement Comment #2 si tous les sacs partagent la même.
+              </div>
+            </div>
+          )}
+
+          {/* ============= IN Cultivation: multi-qualifs intake table ============= */}
+          {showCultivationEntry && (
+            <div className="col-span-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs flex items-center gap-1">
+                  <PackageOpen className="h-3.5 w-3.5" /> Réception par qualification
+                </Label>
+                <div className="text-xs text-muted-foreground">
+                  {cultTotalUnits} sac{cultTotalUnits > 1 ? "s" : ""} · <span className="font-mono font-semibold text-foreground">{cultTotalG.toFixed(2)} g</span>
+                  {cultValidRows.length > 0 && <span className="ml-2">→ {cultValidRows.length} ligne{cultValidRows.length > 1 ? "s" : ""}</span>}
+                </div>
+              </div>
+              <div className="rounded-md border divide-y">
+                <div className="grid grid-cols-[24px_1fr_100px_120px_32px] gap-2 px-2 py-1.5 text-[10px] uppercase text-muted-foreground bg-muted/40">
+                  <span>#</span>
+                  <span>Qualification (Comment #2)</span>
+                  <span>Nb sacs / éch.</span>
+                  <span>Quantité (g)</span>
+                  <span></span>
+                </div>
+                {cultRows.map((r, i) => {
+                  const isBag = (QUALIFICATIONS as readonly string[]).includes(r.qualif);
+                  const bagSize = isBag ? bagSizeFor(r.qualif as Qualification) : null;
+                  return (
+                    <div key={r.id} className="grid grid-cols-[24px_1fr_100px_120px_32px] gap-2 items-center px-2 py-1.5">
+                      <span className="text-[10px] text-muted-foreground font-mono">#{i + 1}</span>
+                      <Select
+                        value={r.qualif || "__none__"}
+                        onValueChange={(v) => updateCultRow(r.id, { qualif: v === "__none__" ? "" : v })}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue placeholder="Choisir…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">—</SelectItem>
+                          {CULTIVATION_QUALIFS.map((q) => (
+                            <SelectItem key={q} value={q}>{q}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={r.units || ""}
+                        onChange={(e) => updateCultRow(r.id, { units: parseInt(e.target.value || "0", 10) })}
+                        placeholder={isBag ? "sacs" : "éch."}
+                        className="h-8 font-mono text-xs"
+                      />
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={r.grams || ""}
+                          onChange={(e) => updateCultRow(r.id, { grams: parseFloat(e.target.value) || 0, gramsTouched: true })}
+                          placeholder={bagSize ? `${bagSize} g/sac` : "grammes"}
+                          className="h-8 font-mono text-xs pr-6"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">g</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeCultRow(r.id)}
+                        className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-red-600"
+                        title="Retirer"
+                        disabled={cultRows.length <= 1}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={addCultRow}>
+                <Plus className="h-4 w-4 mr-1" /> Ajouter une qualification
+              </Button>
+              <div className="text-[11px] text-muted-foreground">
+                Chaque ligne remplie crée une entrée séparée dans le journal (Comment #1 = "In from Cultivation", Comment #2 = qualification, Product Format auto : Bulk pour fleurs/trim, Sample pour Internal Sample / QA Retain / Laboratory Analysis). Les grammes s'auto-calculent à partir du nombre de sacs pour les fleurs (1000 g) et le Trim (1500 g) — modifiable si besoin.
               </div>
             </div>
           )}
