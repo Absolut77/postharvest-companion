@@ -283,9 +283,77 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       return next;
     });
   };
+
+  // ============= IN entry-type + OUT out-type =============
+  const isIn = form.direction === "IN";
+  const [entryType, setEntryType] = useState<EntryType>("cultivation");
+  const [outType, setOutType] = useState<OutType>("event");
+  const isReturn = isIn && entryType !== "cultivation";
+  const showReturnBuilder = isReturn && !isEditing;
+
+  // Return bag builder rows
+  type ReturnRow = { id: string; qualification: Qualification | ""; grams: number };
+  const [returnBags, setReturnBags] = useState<ReturnRow[]>([]);
+  const addReturnBag = () => setReturnBags((r) => [...r, { id: crypto.randomUUID(), qualification: "", grams: 0 }]);
+  const updateReturnBag = (id: string, patch: Partial<ReturnRow>) =>
+    setReturnBags((r) => r.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const removeReturnBag = (id: string) => setReturnBags((r) => r.filter((b) => b.id !== id));
+
+  // Reset entryType/outType/returnBags when modal opens or editing changes
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      if (editing.direction === "IN") setEntryType(ENTRY_BY_REASON(editing.reason || ""));
+      else setOutType(OUT_BY_DESTINATION(editing.destination || editing.reason || ""));
+      setReturnBags([]);
+    } else {
+      setEntryType("cultivation");
+      setOutType("event");
+      setReturnBags([]);
+    }
+  }, [open, editing]);
+
+  // When user switches to a return type, seed one empty row
+  useEffect(() => {
+    if (showReturnBuilder && returnBags.length === 0) {
+      setReturnBags([{ id: crypto.randomUUID(), qualification: "", grams: 0 }]);
+    }
+    if (!showReturnBuilder) return;
+  }, [showReturnBuilder]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const returnTotalG = returnBags.reduce((s, b) => s + (Number(b.grams) || 0), 0);
+  const returnUnits = returnBags.filter((b) => (Number(b.grams) || 0) > 0).length;
+
+  // Sync form from return builder
+  useEffect(() => {
+    if (!showReturnBuilder) return;
+    const qualifs = new Set(returnBags.map((b) => b.qualification).filter(Boolean));
+    const singleQualif = qualifs.size === 1 ? Array.from(qualifs)[0] : "";
+    setForm((f) => ({
+      ...f,
+      quantity_g: +returnTotalG.toFixed(2),
+      units: returnUnits,
+      product_format: f.product_format || "Bulk",
+      comment2: singleQualif || f.comment2,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReturnBuilder, returnTotalG, returnUnits]);
+
   const mutation = useMutation({
     mutationFn: async () => {
-      const payload = { ...form, reason: form.destination || form.reason };
+      // Normalize reason / destination based on direction + sub-type
+      let reason = form.reason;
+      let destination = form.destination;
+      if (form.direction === "IN" && !editing) {
+        reason = REASON_BY_ENTRY[entryType];
+        if (entryType === "cultivation" && !destination) destination = "Cultivation";
+      } else if (form.direction === "OUT" && !editing) {
+        destination = DESTINATION_BY_OUT[outType];
+        reason = destination;
+      } else {
+        reason = form.destination || form.reason;
+      }
+      const payload = { ...form, reason, destination };
       if (editing) return updateMovement(editing.id, payload);
       return insertMovement(payload);
     },
