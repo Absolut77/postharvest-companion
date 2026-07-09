@@ -55,14 +55,16 @@ function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [modalOpen, setModalOpen] = useState(false);
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
+  const [newDirection, setNewDirection] = useState<"IN" | "OUT">("IN");
 
   const selectedKey = ymd(selectedDate);
   const dayEvents = byDay.get(selectedKey) ?? [];
 
   const eventDays = useMemo(() => Array.from(byDay.keys()).map((d) => new Date(d + "T00:00")), [byDay]);
 
-  const openAddForDate = (d: Date) => {
+  const openAddForDate = (d: Date, dir: "IN" | "OUT") => {
     setPrefillDate(ymd(d));
+    setNewDirection(dir);
     setModalOpen(true);
   };
 
