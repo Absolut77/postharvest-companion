@@ -642,7 +642,13 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
         >
           {isOut ? <><ArrowUp className="h-5 w-5" /> OUT (Sortie)</> : <><ArrowDown className="h-5 w-5" /> IN (Entrée)</>}
           <span className="text-xs font-normal opacity-70 ml-2">Verrouillé</span>
+          {flow.subtitle && (
+            <span className="text-xs font-normal opacity-90 ml-2 hidden md:inline">· {flow.subtitle}</span>
+          )}
         </div>
+        {flow.subtitle && (
+          <div className="text-xs text-muted-foreground -mt-1 md:hidden">{flow.subtitle}</div>
+        )}
 
         {/* Sub-type selector (taxonomie officielle Log 2026) */}
         {!isEditing && (
