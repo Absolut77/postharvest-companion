@@ -111,14 +111,23 @@ export function ImportExportButtons() {
 
           {parsed && (
             <div className="space-y-4">
-              <div className="rounded-md border p-3 text-sm bg-muted/30">
+              <div className="rounded-md border p-3 text-sm bg-muted/30 space-y-1">
+                <div>Feuille : <span className="font-mono">{parsed.sheetName}</span></div>
                 <div><span className="font-semibold">{parsed.rows.length}</span> lignes valides détectées</div>
                 {parsed.skipped > 0 && (
-                  <div className="text-muted-foreground">{parsed.skipped} lignes ignorées (vides)</div>
+                  <div className="text-muted-foreground">{parsed.skipped} lignes ignorées (sans strain / batch)</div>
                 )}
                 <div className="text-muted-foreground">
                   Base actuelle : {movements.length} mouvements
                 </div>
+                {parsed.unknownHeaders.length > 0 && (
+                  <div className="pt-2 mt-2 border-t text-xs">
+                    <div className="font-medium text-amber-700 mb-1">⚠ Colonnes non reconnues (ignorées) :</div>
+                    <div className="font-mono text-[11px] text-muted-foreground break-all">
+                      {parsed.unknownHeaders.join(" · ")}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <RadioGroup value={mode} onValueChange={(v) => setMode(v as typeof mode)}>

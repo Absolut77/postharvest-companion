@@ -9,28 +9,28 @@ type Field = keyof MovementInput;
 
 const COLUMNS: ReadonlyArray<{ field: Field; aliases: string[] }> = [
   { field: "event_date",            aliases: ["Date", "Event Date"] },
-  { field: "initials",              aliases: ["Initials", "Initiales"] },
-  { field: "strain",                aliases: ["Strain", "Souche"] },
-  { field: "batch_id",              aliases: ["Batch ID", "Batch", "Lot"] },
-  { field: "product_type",          aliases: ["Product Type"] },
+  { field: "initials",              aliases: ["Initials", "Initiales", "Init.", "Init"] },
+  { field: "strain",                aliases: ["Strain", "Souche", "Product"] },
+  { field: "batch_id",              aliases: ["Batch ID", "Batch #", "Batch#", "Batch No", "Batch No.", "Batch Number", "Batch", "Lot", "Lot #", "N° Lot", "No Lot"] },
+  { field: "product_type",          aliases: ["Product Type", "Type"] },
   { field: "product_format",        aliases: ["Product Format", "Format"] },
-  { field: "quantity_g",            aliases: ["Quantity (g)", "Quantity", "Qty (g)", "Quantité (g)"] },
-  { field: "units",                 aliases: ["Units", "Unités"] },
-  { field: "direction",             aliases: ["Direction", "IN/OUT"] },
+  { field: "quantity_g",            aliases: ["Quantity (g)", "Quantity", "Qty (g)", "Qty", "Quantité (g)", "Quantity g"] },
+  { field: "units",                 aliases: ["Units", "Unités", "Unit", "# Units"] },
+  { field: "direction",             aliases: ["Direction", "IN/OUT", "In/Out"] },
   { field: "reason",                aliases: ["Reason", "Motif"] },
-  { field: "destination",           aliases: ["Destination"] },
-  { field: "comment1",              aliases: ["Comment #1", "Comment 1"] },
-  { field: "comment2",              aliases: ["Comment #2", "Comment 2"] },
-  { field: "unit_indicator",        aliases: ["Unit Indicator", "Province", "Distributor"] },
+  { field: "destination",           aliases: ["Destination", "Dest.", "Dest"] },
+  { field: "comment1",              aliases: ["Comment #1", "Comment 1", "Comment1", "Commentaire 1"] },
+  { field: "comment2",              aliases: ["Comment #2", "Comment 2", "Comment2", "Commentaire 2", "Additional Comment"] },
+  { field: "unit_indicator",        aliases: ["Unit Indicator", "Province", "Distributor", "Distributeur"] },
   { field: "sku",                   aliases: ["SKU"] },
-  { field: "detail",                aliases: ["Detail", "Détail"] },
-  { field: "stamp_used",            aliases: ["Stamp Used"] },
+  { field: "detail",                aliases: ["Detail", "Détail", "Details"] },
+  { field: "stamp_used",            aliases: ["Stamp Used", "Stamp"] },
   { field: "stamp_type",            aliases: ["Stamp Type"] },
-  { field: "adjustment_validation", aliases: ["Adjustment Validation"] },
-  { field: "additional_comments",   aliases: ["Additional Comments"] },
+  { field: "adjustment_validation", aliases: ["Adjustment Validation", "Adjustment"] },
+  { field: "additional_comments",   aliases: ["Additional Comments", "Notes"] },
   { field: "elevated_update",       aliases: ["Elevated Update"] },
-  { field: "units2",                aliases: ["Units 2", "Units2"] },
-  { field: "comment",               aliases: ["Comment"] },
+  { field: "units2",                aliases: ["Units 2", "Units2", "Unit 2"] },
+  { field: "comment",               aliases: ["Comment", "Commentaire"] },
 ];
 
 // ---------- Helpers ----------
@@ -83,11 +83,33 @@ function toDir(v: unknown): Direction {
 
 // ---------- Import ----------
 
-export type ParsedImport = { rows: MovementInput[]; skipped: number; totalRows: number };
+export type ParsedImport = {
+  rows: MovementInput[];
+  skipped: number;
+  totalRows: number;
+  sheetName: string;
+  matchedHeaders: string[];
+  unknownHeaders: string[];
+};
+
+/** Déduit la direction à partir des colonnes disponibles (Destination "In/Out", motif, etc.) */
+function inferDirection(acc: Partial<Record<Field, unknown>>): Direction {
+  const explicit = String(acc.direction ?? "").trim().toUpperCase();
+  if (explicit === "IN" || explicit === "OUT") return explicit as Direction;
+
+  const dest = String(acc.destination ?? "").trim().toLowerCase();
+  if (dest === "in" || dest === "entrée" || dest === "entree") return "IN";
+  if (dest === "out" || dest === "sortie") return "OUT";
+
+  const reason = `${String(acc.reason ?? "")} ${String(acc.comment1 ?? "")}`.toLowerCase();
+  if (/\b(in from|back from|standby|réception|reception|retour)\b/.test(reason)) return "IN";
+  if (/\b(out |out of|out for|destruction|shipment|expédition|expedition|sortie)\b/.test(reason)) return "OUT";
+
+  return "OUT";
+}
 
 export function parseWorkbook(buf: ArrayBuffer): ParsedImport {
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
-  // Chercher la feuille "Log 2026" en priorité, sinon la première
   const sheetName =
     wb.SheetNames.find((n) => /log.*2026/i.test(n)) ?? wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
@@ -96,12 +118,13 @@ export function parseWorkbook(buf: ArrayBuffer): ParsedImport {
     raw: true,
   });
 
-  // Construire une map header -> field
   const aliasMap = new Map<string, Field>();
   for (const { field, aliases } of COLUMNS) {
     for (const a of aliases) aliasMap.set(normHeader(a), field);
   }
 
+  const matched = new Set<string>();
+  const unknown = new Set<string>();
   const rows: MovementInput[] = [];
   let skipped = 0;
 
@@ -109,9 +132,13 @@ export function parseWorkbook(buf: ArrayBuffer): ParsedImport {
     const acc: Partial<Record<Field, unknown>> = {};
     for (const [k, v] of Object.entries(r)) {
       const f = aliasMap.get(normHeader(k));
-      if (f) acc[f] = v;
+      if (f) {
+        acc[f] = v;
+        matched.add(k);
+      } else if (k && String(v ?? "").toString().trim() !== "") {
+        unknown.add(k);
+      }
     }
-    // Ligne vide ou sans strain/batch -> skip
     if (!acc.strain && !acc.batch_id) { skipped++; continue; }
 
     const mov: MovementInput = {
@@ -123,7 +150,7 @@ export function parseWorkbook(buf: ArrayBuffer): ParsedImport {
       product_format: String(acc.product_format ?? ""),
       quantity_g: toNum(acc.quantity_g),
       units: Math.round(toNum(acc.units)),
-      direction: toDir(acc.direction),
+      direction: inferDirection(acc),
       reason: String(acc.reason ?? ""),
       destination: String(acc.destination ?? ""),
       comment1: String(acc.comment1 ?? ""),
@@ -142,8 +169,16 @@ export function parseWorkbook(buf: ArrayBuffer): ParsedImport {
     rows.push(mov);
   }
 
-  return { rows, skipped, totalRows: raw.length };
+  return {
+    rows,
+    skipped,
+    totalRows: raw.length,
+    sheetName,
+    matchedHeaders: Array.from(matched),
+    unknownHeaders: Array.from(unknown),
+  };
 }
+
 
 // ---------- Export ----------
 
