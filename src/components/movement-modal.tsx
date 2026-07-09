@@ -202,10 +202,11 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     });
   };
 
-  // ============= OUT bag picker =============
+  // ============= OUT bag picker (state) =============
   const isOut = form.direction === "OUT";
   const isEditing = !!editing;
-  const showBagPicker = isOut && !isEditing;
+  // NB: showBagPicker is derived later from inputMode; here we still need bag data for any OUT sub-type.
+  const needsBagPickerData = isOut && !isEditing;
 
   const [selectedBagKeys, setSelectedBagKeys] = useState<Set<string>>(new Set());
 
