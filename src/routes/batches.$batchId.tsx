@@ -314,7 +314,6 @@ function VaultTab({ batchId }: { batchId: string }) {
 }
 
 // Utility: run a callback whenever a key string changes (avoids uncontrolled re-init loops)
-import { useEffect, useRef } from "react";
 function useSyncOnce(key: string, cb: () => void) {
   const last = useRef<string | null>(null);
   useEffect(() => {
