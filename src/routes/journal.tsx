@@ -157,7 +157,16 @@ function Journal() {
             Seule source de saisie. L'inventaire se met à jour automatiquement.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onFilePicked} />
+          <Button onClick={onImportClick} size="lg" variant="outline" disabled={importing} className="shadow">
+            {importing ? <Loader2 className="h-5 w-5 mr-1 animate-spin" /> : <Upload className="h-5 w-5 mr-1" />}
+            Import Excel
+          </Button>
+          <Button onClick={onExport} size="lg" variant="outline" disabled={exporting} className="shadow">
+            {exporting ? <Loader2 className="h-5 w-5 mr-1 animate-spin" /> : <Download className="h-5 w-5 mr-1" />}
+            Export Excel
+          </Button>
           <Button onClick={() => openNew("IN")} size="lg" className="shadow bg-emerald-600 hover:bg-emerald-700 text-white">
             <ArrowDown className="h-5 w-5 mr-1" /> IN — Entrée
           </Button>
