@@ -307,14 +307,31 @@ function BatchDetail({
                 );
               })}
             </nav>
-            <div className="p-3 border-t bg-background/50">
-              <div className="text-[10px] uppercase text-muted-foreground">Stock total</div>
-              <div className={cn(
-                "text-xl font-mono font-bold",
-                stock.quantity_g < 0 && "text-red-600",
-                stock.quantity_g < 100 && stock.quantity_g >= 0 && "text-amber-600",
-              )}>{stock.quantity_g.toFixed(1)} g</div>
-              <div className="text-xs text-muted-foreground">{stock.units} unités · {stock.movements} mvts</div>
+            <div className="p-3 border-t bg-background/50 space-y-2">
+              <div>
+                <div className="text-[10px] uppercase text-muted-foreground">Stock total</div>
+                <div className={cn(
+                  "text-xl font-mono font-bold",
+                  stock.quantity_g < 0 && "text-red-600",
+                  stock.quantity_g < 100 && stock.quantity_g >= 0 && "text-amber-600",
+                )}>{stock.quantity_g.toFixed(1)} g</div>
+                <div className="text-xs text-muted-foreground">{stock.units} unités · {stock.movements} mvts</div>
+              </div>
+              {(() => {
+                const tempOut = movements.reduce((s, m) => {
+                  if (m.direction === "OUT" && /for\s*event/i.test(`${m.destination} ${m.reason}`)) return s + Number(m.quantity_g);
+                  if (m.direction === "IN" && /back\s*from\s*event/i.test(m.reason)) return s - Number(m.quantity_g);
+                  return s;
+                }, 0);
+                if (tempOut <= 0.01) return null;
+                return (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2">
+                    <div className="text-[10px] uppercase text-amber-700 font-semibold">En cours — événement</div>
+                    <div className="text-sm font-mono font-bold text-amber-800">{tempOut.toFixed(1)} g</div>
+                    <div className="text-[10px] text-amber-700">Sorti pour un événement, retour attendu.</div>
+                  </div>
+                );
+              })()}
             </div>
           </aside>
 
