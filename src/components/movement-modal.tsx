@@ -464,11 +464,11 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     if (isIn) {
       switch (inCat) {
         case "cultivation":
-          return { ...base, subtitle: "Réception depuis Cultivation",
+          return { ...base, subtitle: "Réception depuis Cultivation (multi-qualifications)",
             productType: SHOW("Type de produit", "Flower, Trim…"),
-            productFormat: SHOW("Format (auto selon qualification)"),
-            quantity: SHOW("Quantité totale (g)"),
-            units: SHOW("Nombre de sacs"),
+            productFormat: HIDE,
+            quantity: HIDE,
+            units: HIDE,
             destination: HIDE, comment2: HIDE,
             comment1: SHOW("Note cultivation (facultatif)"),
             additionalComments: SHOW("Commentaires additionnels (facultatif)"),
