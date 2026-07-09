@@ -395,6 +395,48 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           <span className="text-xs font-normal opacity-70 ml-2">Verrouillé</span>
         </div>
 
+        {/* Sub-type selector (nature de l'événement) */}
+        {!isEditing && (
+          <div>
+            <Label className="text-xs mb-1 block">Nature de l'événement</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {isOut
+                ? OUT_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setOutType(t.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs border transition",
+                        outType === t.id
+                          ? "border-red-500 bg-red-500/10 text-red-700 font-semibold"
+                          : "border-border text-muted-foreground hover:bg-accent",
+                      )}
+                      title={t.hint}
+                    >
+                      {t.label}
+                      <span className="ml-1 text-[10px] opacity-70">· {t.hint}</span>
+                    </button>
+                  ))
+                : ENTRY_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setEntryType(t.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs border transition",
+                        entryType === t.id
+                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-semibold"
+                          : "border-border text-muted-foreground hover:bg-accent",
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Date</Label>
