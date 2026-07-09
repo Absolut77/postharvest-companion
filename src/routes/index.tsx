@@ -12,7 +12,6 @@ import {
   ArrowDown, ArrowUp, CalendarDays,
 } from "lucide-react";
 import { MovementModal } from "@/components/movement-modal";
-import { ImportExportButtons } from "@/components/import-export";
 import type { Movement } from "@/lib/types";
 
 export const Route = createFileRoute("/")({
@@ -76,10 +75,9 @@ function Dashboard() {
           <h1 className="text-2xl font-semibold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Vue d'ensemble et calendrier des événements du Log 2026.</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <ImportExportButtons />
-          <Button asChild variant="outline" size="sm"><Link to="/inventory"><Boxes className="h-4 w-4 mr-1" /> Bulk Inventory</Link></Button>
-          <Button asChild size="sm"><Link to="/journal"><ClipboardList className="h-4 w-4 mr-1" /> Journal</Link></Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline"><Link to="/inventory"><Boxes className="h-4 w-4 mr-1" /> Bulk Inventory</Link></Button>
+          <Button asChild><Link to="/journal"><ClipboardList className="h-4 w-4 mr-1" /> Ouvrir le Journal</Link></Button>
         </div>
       </div>
 
