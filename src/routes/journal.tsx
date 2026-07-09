@@ -48,6 +48,38 @@ function Journal() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Movement | null>(null);
   const [newDirection, setNewDirection] = useState<"IN" | "OUT">("IN");
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onImportClick = () => fileRef.current?.click();
+  const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!confirm(`Importer "${file.name}" ?\n\nCela va REMPLACER TOUS les mouvements existants par le contenu de la feuille "LOG 2026".`)) return;
+    setImporting(true);
+    try {
+      const res = await importFromXlsx(file);
+      await qc.invalidateQueries({ queryKey: ["movements"] });
+      toast.success(`Import réussi : ${res.inserted} lignes (${res.deletedPrevious} remplacées, ${res.skipped} ignorées)`);
+    } catch (err: any) {
+      toast.error(`Erreur d'import : ${err?.message ?? err}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+  const onExport = async () => {
+    setExporting(true);
+    try {
+      await exportToXlsx();
+      toast.success("Export téléchargé");
+    } catch (err: any) {
+      toast.error(`Erreur d'export : ${err?.message ?? err}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const allBatches = useMemo(
     () => Array.from(new Set(movements.map((m) => m.batch_id).filter(Boolean))).sort(),
