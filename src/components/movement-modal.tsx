@@ -975,169 +975,200 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
             </div>
           )}
 
-          {/* ============= IN Cultivation: classic form ============= */}
+          {/* ============= Champs classiques (masqués si bag picker/builder) ============= */}
           {!showBagPicker && !showReturnBuilder && (
             <>
-              <div>
-                <Label className="text-xs">Product Type</Label>
-                <ComboCreate
-                  value={form.product_type}
-                  onChange={(v) => set("product_type", v)}
-                  options={allProductTypes}
-                  placeholder="Type…"
-                  createLabel="Créer le type"
-                  onClear={() => set("product_type", "")}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Product Format</Label>
-                <div className="flex items-center gap-1">
-                  <Select value={form.product_format} onValueChange={(v) => set("product_format", v)}>
-                    <SelectTrigger><SelectValue placeholder="Format…" /></SelectTrigger>
-                    <SelectContent>
-                      {allFormats.map((f) => (
-                        <SelectItem key={f} value={f}>{f}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {form.product_format && (
-                    <ClearBtn onClick={() => set("product_format", "")} />
-                  )}
+              {flow.productType.show && (
+                <div>
+                  <Label className="text-xs">{flow.productType.label}</Label>
+                  <ComboCreate
+                    value={form.product_type}
+                    onChange={(v) => set("product_type", v)}
+                    options={allProductTypes}
+                    placeholder={flow.productType.placeholder ?? "Type…"}
+                    createLabel="Créer le type"
+                    onClear={() => set("product_type", "")}
+                  />
                 </div>
-              </div>
-
-              <div>
-                <Label className="text-xs flex items-center gap-2">
-                  Quantity (G)
-                  {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto ({gPerUnit}g/u)</span>}
-                </Label>
-                <Input type="number" step="0.01" min="0" value={form.quantity_g}
-                  onChange={(e) => onQuantityChange(parseFloat(e.target.value) || 0)}
-                  className="font-mono" />
-              </div>
-              <div>
-                <Label className="text-xs flex items-center gap-2">
-                  Units
-                  {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto</span>}
-                </Label>
-                <Input type="number" min="0" value={form.units}
-                  onChange={(e) => onUnitsChange(parseInt(e.target.value || "0", 10))}
-                  className="font-mono" />
-              </div>
-
-              <div className="col-span-2">
-                <Label className="text-xs">Destination / Raison (facultatif)</Label>
-                <ComboCreate
-                  value={form.destination}
-                  onChange={(v) => set("destination", v)}
-                  options={allDestinations}
-                  placeholder="Destination…"
-                  createLabel="Créer une destination"
-                  onClear={() => set("destination", "")}
-                />
-              </div>
-            </>
-          )}
-
-          <div className="col-span-2">
-            <Label className="text-xs">Comment #1</Label>
-            <Input value={form.comment1} onChange={(e) => set("comment1", e.target.value)} />
-          </div>
-
-          <div className="col-span-2 flex items-center justify-between rounded-md border p-3 bg-muted/30">
-            <div>
-              <div className="text-sm font-semibold">Adjustment Validation</div>
-              <div className="text-xs text-muted-foreground">
-                {form.adjustment_validation ? "Validé" : "Non validé"}
-              </div>
-            </div>
-            <ColoredCheckbox
-              checked={form.adjustment_validation}
-              onChange={(v) => set("adjustment_validation", v)}
-            />
-          </div>
-
-          <div className="col-span-2">
-            <Label className="text-xs">
-              Comment #2
-              {showBagPicker && form.comment2 && (
-                <span className="ml-2 text-[10px] text-primary">auto : qualification</span>
               )}
-            </Label>
-            <Input value={form.comment2} onChange={(e) => set("comment2", e.target.value)} />
-          </div>
-
-          {/* IN-only ancillary fields (units2, unit_indicator, stamps, SKU) */}
-          {!showBagPicker && !showReturnBuilder && (
-            <>
-              <div>
-                <Label className="text-xs">Units 2</Label>
-                <Input type="number" min="0" step="0.01" value={form.units2}
-                  onChange={(e) => set("units2", parseFloat(e.target.value) || 0)}
-                  className="font-mono" />
-              </div>
-              <div>
-                <Label className="text-xs">Unit Indicator</Label>
-                <ComboCreate
-                  value={form.unit_indicator}
-                  onChange={(v) => set("unit_indicator", v)}
-                  options={allIndicators}
-                  placeholder="g / u / kg…"
-                  createLabel="Créer l'indicateur"
-                  onClear={() => set("unit_indicator", "")}
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">Timbre utilisé</Label>
-                <ComboCreate
-                  value={form.stamp_used}
-                  onChange={(v) => set("stamp_used", v)}
-                  options={allStamps}
-                  placeholder="N° / réf. timbre…"
-                  createLabel="Ajouter"
-                  onClear={() => set("stamp_used", "")}
-                  mono
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Type de timbre</Label>
-                <div className="flex items-center gap-1">
-                  <Select value={form.stamp_type || "__none__"} onValueChange={(v) => set("stamp_type", v === "__none__" ? "" : v)}>
-                    <SelectTrigger><SelectValue placeholder="Type…" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">—</SelectItem>
-                      {STAMP_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {form.stamp_type && <ClearBtn onClick={() => set("stamp_type", "")} />}
+              {flow.productFormat.show && (
+                <div>
+                  <Label className="text-xs">{flow.productFormat.label}</Label>
+                  <div className="flex items-center gap-1">
+                    <Select value={form.product_format} onValueChange={(v) => set("product_format", v)}>
+                      <SelectTrigger><SelectValue placeholder="Format…" /></SelectTrigger>
+                      <SelectContent>
+                        {allFormats.map((f) => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {form.product_format && (
+                      <ClearBtn onClick={() => set("product_format", "")} />
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="col-span-2">
-                <Label className="text-xs">SKU</Label>
-                <Input value={form.sku} onChange={(e) => set("sku", e.target.value)} className="font-mono" />
-              </div>
+              {flow.quantity.show && (
+                <div>
+                  <Label className="text-xs flex items-center gap-2">
+                    {flow.quantity.label}
+                    {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto ({gPerUnit}g/u)</span>}
+                  </Label>
+                  <Input type="number" step="0.01" min="0" value={form.quantity_g}
+                    onChange={(e) => onQuantityChange(parseFloat(e.target.value) || 0)}
+                    className="font-mono" />
+                </div>
+              )}
+              {flow.units.show && (
+                <div>
+                  <Label className="text-xs flex items-center gap-2">
+                    {flow.units.label}
+                    {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto</span>}
+                  </Label>
+                  <Input type="number" min="0" value={form.units}
+                    onChange={(e) => onUnitsChange(parseInt(e.target.value || "0", 10))}
+                    className="font-mono" />
+                </div>
+              )}
+
+              {flow.destination.show && (
+                <div className="col-span-2">
+                  <Label className="text-xs">{flow.destination.label}</Label>
+                  <ComboCreate
+                    value={form.destination}
+                    onChange={(v) => set("destination", v)}
+                    options={allDestinations}
+                    placeholder="Destination…"
+                    createLabel="Créer une destination"
+                    onClear={() => set("destination", "")}
+                  />
+                </div>
+              )}
             </>
           )}
 
-          <div className="col-span-2">
-            <Label className="text-xs">Additional Comments</Label>
-            <Textarea value={form.additional_comments} onChange={(e) => set("additional_comments", e.target.value)} rows={2} />
-          </div>
-
-          <div className="col-span-2 flex items-center justify-between rounded-md border p-3 bg-muted/30">
-            <div>
-              <div className="text-sm font-semibold">Elevated Update</div>
-              <div className="text-xs text-muted-foreground">
-                {form.elevated_update ? "Oui" : "Non"}
-              </div>
+          {flow.comment1.show && (
+            <div className="col-span-2">
+              <Label className="text-xs">{flow.comment1.label}</Label>
+              <Input value={form.comment1} onChange={(e) => set("comment1", e.target.value)} />
             </div>
-            <ColoredCheckbox
-              checked={form.elevated_update}
-              onChange={(v) => set("elevated_update", v)}
-            />
-          </div>
+          )}
+
+          {flow.adjustment.show && (
+            <div className="col-span-2 flex items-center justify-between rounded-md border p-3 bg-muted/30">
+              <div>
+                <div className="text-sm font-semibold">{flow.adjustment.label}</div>
+                <div className="text-xs text-muted-foreground">
+                  {form.adjustment_validation ? "Validé" : "Non validé"}
+                </div>
+              </div>
+              <ColoredCheckbox
+                checked={form.adjustment_validation}
+                onChange={(v) => set("adjustment_validation", v)}
+              />
+            </div>
+          )}
+
+          {flow.comment2.show && (
+            <div className="col-span-2">
+              <Label className="text-xs">
+                {flow.comment2.label}
+                {showBagPicker && form.comment2 && (
+                  <span className="ml-2 text-[10px] text-primary">auto : qualification</span>
+                )}
+              </Label>
+              <Input value={form.comment2} onChange={(e) => set("comment2", e.target.value)} />
+            </div>
+          )}
+
+          {/* Champs annexes (units2, unit_indicator, stamps, SKU) */}
+          {!showBagPicker && !showReturnBuilder && (
+            <>
+              {flow.units2.show && (
+                <div>
+                  <Label className="text-xs">{flow.units2.label}</Label>
+                  <Input type="number" min="0" step="0.01" value={form.units2}
+                    onChange={(e) => set("units2", parseFloat(e.target.value) || 0)}
+                    className="font-mono" />
+                </div>
+              )}
+              {flow.unitIndicator.show && (
+                <div>
+                  <Label className="text-xs">{flow.unitIndicator.label}</Label>
+                  <ComboCreate
+                    value={form.unit_indicator}
+                    onChange={(v) => set("unit_indicator", v)}
+                    options={allIndicators}
+                    placeholder="g / u / kg…"
+                    createLabel="Créer l'indicateur"
+                    onClear={() => set("unit_indicator", "")}
+                  />
+                </div>
+              )}
+
+              {flow.stamps.show && (
+                <>
+                  <div>
+                    <Label className="text-xs">{flow.stamps.label}</Label>
+                    <ComboCreate
+                      value={form.stamp_used}
+                      onChange={(v) => set("stamp_used", v)}
+                      options={allStamps}
+                      placeholder="N° / réf. timbre…"
+                      createLabel="Ajouter"
+                      onClear={() => set("stamp_used", "")}
+                      mono
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Type de timbre</Label>
+                    <div className="flex items-center gap-1">
+                      <Select value={form.stamp_type || "__none__"} onValueChange={(v) => set("stamp_type", v === "__none__" ? "" : v)}>
+                        <SelectTrigger><SelectValue placeholder="Type…" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">—</SelectItem>
+                          {STAMP_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      {form.stamp_type && <ClearBtn onClick={() => set("stamp_type", "")} />}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {flow.sku.show && (
+                <div className="col-span-2">
+                  <Label className="text-xs">{flow.sku.label}</Label>
+                  <Input value={form.sku} onChange={(e) => set("sku", e.target.value)} className="font-mono" />
+                </div>
+              )}
+            </>
+          )}
+
+          {flow.additionalComments.show && (
+            <div className="col-span-2">
+              <Label className="text-xs">{flow.additionalComments.label}</Label>
+              <Textarea value={form.additional_comments} onChange={(e) => set("additional_comments", e.target.value)} rows={2} />
+            </div>
+          )}
+
+          {flow.elevated.show && (
+            <div className="col-span-2 flex items-center justify-between rounded-md border p-3 bg-muted/30">
+              <div>
+                <div className="text-sm font-semibold">{flow.elevated.label}</div>
+                <div className="text-xs text-muted-foreground">
+                  {form.elevated_update ? "Oui" : "Non"}
+                </div>
+              </div>
+              <ColoredCheckbox
+                checked={form.elevated_update}
+                onChange={(v) => set("elevated_update", v)}
+              />
+            </div>
+          )}
+
         </div>
 
         <DialogFooter>
