@@ -260,12 +260,35 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     });
   };
 
-  // ============= IN entry-type + OUT out-type =============
+  // ============= Sub-type taxonomy =============
   const isIn = form.direction === "IN";
-  const [entryType, setEntryType] = useState<EntryType>("cultivation");
-  const [outType, setOutType] = useState<OutType>("event");
-  const isReturn = isIn && entryType !== "cultivation";
-  const showReturnBuilder = isReturn && !isEditing;
+
+  // IN state
+  const [inCat, setInCat] = useState<InCategory>("cultivation");
+  const [cultivationQualif, setCultivationQualif] = useState<string>("");
+
+  // OUT state
+  const [outCat, setOutCat] = useState<OutCategory>("facility");
+  const [facilityPurpose, setFacilityPurpose] = useState<FacilityPurpose>("b2b_sale");
+
+  // Shared conditional fields
+  const [province, setProvince] = useState<string>("");
+  const [packagedBatch, setPackagedBatch] = useState<string>("");
+  const [recipient, setRecipient] = useState<string>("");
+
+  // Derive input mode
+  const inputMode = isEditing
+    ? "manualEntry"
+    : isIn
+      ? inInputMode(inCat)
+      : outInputMode(outCat, facilityPurpose);
+
+  const showBagPicker = !isEditing && inputMode === "bagPicker";
+  const showReturnBuilder = !isEditing && inputMode === "bagBuilder";
+  const showCultivationEntry = !isEditing && inputMode === "cultivationEntry";
+  const showPackagedShipment = !isEditing && inputMode === "packagedShipment";
+  const showManualSample = !isEditing && inputMode === "manualSample";
+  const showManualEntry = isEditing || inputMode === "manualEntry";
 
   // Return bag builder rows
   type ReturnRow = { id: string; qualification: Qualification | ""; grams: number };
@@ -275,26 +298,41 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     setReturnBags((r) => r.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   const removeReturnBag = (id: string) => setReturnBags((r) => r.filter((b) => b.id !== id));
 
-  // Reset entryType/outType/returnBags when modal opens or editing changes
+  // Init when modal opens or editing changes
   useEffect(() => {
     if (!open) return;
     if (editing) {
-      if (editing.direction === "IN") setEntryType(ENTRY_BY_REASON(editing.reason || ""));
-      else setOutType(OUT_BY_DESTINATION(editing.destination || editing.reason || ""));
+      if (editing.direction === "IN") {
+        const c = detectInCategory(editing.reason || "");
+        setInCat(c);
+        if (c === "cultivation") setCultivationQualif(editing.comment2 || "");
+      } else {
+        const c = detectOutCategory(editing.reason || "");
+        setOutCat(c);
+        if (c === "facility") setFacilityPurpose(detectFacilityPurpose(editing.comment2 || ""));
+      }
+      setProvince(editing.unit_indicator || "");
+      setPackagedBatch(editing.comment2 || "");
+      setRecipient(editing.additional_comments || "");
       setReturnBags([]);
+      setCultivationQualif(editing.comment2 || "");
     } else {
-      setEntryType("cultivation");
-      setOutType("event");
+      setInCat("cultivation");
+      setOutCat("facility");
+      setFacilityPurpose("b2b_sale");
+      setCultivationQualif("");
+      setProvince("");
+      setPackagedBatch("");
+      setRecipient("");
       setReturnBags([]);
     }
   }, [open, editing]);
 
-  // When user switches to a return type, seed one empty row
+  // Seed one empty row when entering bag builder mode
   useEffect(() => {
     if (showReturnBuilder && returnBags.length === 0) {
       setReturnBags([{ id: crypto.randomUUID(), qualification: "", grams: 0 }]);
     }
-    if (!showReturnBuilder) return;
   }, [showReturnBuilder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const returnTotalG = returnBags.reduce((s, b) => s + (Number(b.grams) || 0), 0);
@@ -309,27 +347,71 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       ...f,
       quantity_g: +returnTotalG.toFixed(2),
       units: returnUnits,
-      product_format: f.product_format || "Bulk",
+      product_format: f.product_format || (isIn ? IN_CATEGORIES.find((c) => c.id === inCat)?.defaultFormat ?? "Bulk" : "Bulk"),
       comment2: singleQualif || f.comment2,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showReturnBuilder, returnTotalG, returnUnits]);
 
+  // Auto-set product_format from sub-type
+  useEffect(() => {
+    if (isEditing) return;
+    if (isIn) {
+      const cfg = IN_CATEGORIES.find((c) => c.id === inCat);
+      if (cfg) setForm((f) => ({ ...f, product_format: cfg.defaultFormat }));
+    } else if (outCat === "facility") {
+      const cfg = FACILITY_PURPOSES.find((p) => p.id === facilityPurpose);
+      if (cfg) setForm((f) => ({ ...f, product_format: cfg.defaultFormat }));
+    } else {
+      const cfg = OUT_CATEGORIES.find((c) => c.id === outCat);
+      if (cfg && cfg.id === "sampling") setForm((f) => ({ ...f, product_format: "Sample" }));
+      else setForm((f) => ({ ...f, product_format: "Bulk" }));
+    }
+  }, [isIn, inCat, outCat, facilityPurpose, isEditing]);
+
+  // Auto-set comment2 from cultivation qualif
+  useEffect(() => {
+    if (isEditing) return;
+    if (isIn && inCat === "cultivation" && cultivationQualif) {
+      setForm((f) => ({
+        ...f,
+        comment2: cultivationQualif,
+        product_format: formatForCultivationQualif(cultivationQualif),
+      }));
+    }
+  }, [cultivationQualif, isIn, inCat, isEditing]);
+
   const mutation = useMutation({
     mutationFn: async () => {
-      // Normalize reason / destination based on direction + sub-type
       let reason = form.reason;
       let destination = form.destination;
-      if (form.direction === "IN" && !editing) {
-        reason = REASON_BY_ENTRY[entryType];
-        if (entryType === "cultivation" && !destination) destination = "Cultivation";
-      } else if (form.direction === "OUT" && !editing) {
-        destination = DESTINATION_BY_OUT[outType];
-        reason = destination;
-      } else {
-        reason = form.destination || form.reason;
+      let comment2 = form.comment2;
+      let unit_indicator = form.unit_indicator;
+      let additional_comments = form.additional_comments;
+
+      if (!editing) {
+        if (isIn) {
+          const cfg = IN_CATEGORIES.find((c) => c.id === inCat)!;
+          reason = cfg.reason;
+          destination = "In";
+          if (cfg.needsQualif && cultivationQualif) comment2 = cultivationQualif;
+          if (cfg.needsPackagedBatch && packagedBatch) comment2 = packagedBatch;
+          if (cfg.needsRecipient && recipient) additional_comments = additional_comments || recipient;
+        } else {
+          const outCfg = OUT_CATEGORIES.find((c) => c.id === outCat)!;
+          reason = outCfg.reason;
+          destination = "Out";
+          if (outCat === "facility") {
+            const pCfg = FACILITY_PURPOSES.find((p) => p.id === facilityPurpose)!;
+            if (pCfg.comment2) comment2 = pCfg.comment2;
+            if (pCfg.needsProvince && province) unit_indicator = province;
+            if (pCfg.needsRecipient && recipient) additional_comments = additional_comments || recipient;
+          }
+          if (outCat === "packaging" && packagedBatch) comment2 = packagedBatch;
+        }
       }
-      const payload = { ...form, reason, destination };
+
+      const payload = { ...form, reason, destination, comment2, unit_indicator, additional_comments };
       if (editing) return updateMovement(editing.id, payload);
       return insertMovement(payload);
     },
