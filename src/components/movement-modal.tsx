@@ -238,9 +238,10 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
   const selectedTotalG = selectedBags.reduce((s, b) => s + b.grams, 0);
   const selectedUnits = selectedBags.length;
 
-  // Sync form fields from selected bags
+  // Sync form fields from selected bags (only when the picker actually has a selection)
   useEffect(() => {
-    if (!showBagPicker) return;
+    if (!needsBagPickerData) return;
+    if (selectedBagKeys.size === 0) return;
     const qualifs = new Set(selectedBags.map((b) => b.qualification));
     const singleQualif = qualifs.size === 1 ? Array.from(qualifs)[0] : "";
     setForm((f) => ({
@@ -251,7 +252,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       comment2: singleQualif || f.comment2,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showBagPicker, selectedTotalG, selectedUnits]);
+  }, [needsBagPickerData, selectedTotalG, selectedUnits]);
 
   const toggleBag = (key: string) => {
     setSelectedBagKeys((prev) => {
