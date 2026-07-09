@@ -23,7 +23,39 @@ import type { Movement, Direction } from "@/lib/types";
 import { useCurrentUser } from "@/lib/current-user";
 import { toast } from "sonner";
 import { ColoredCheckbox } from "./colored-checkbox";
-import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS } from "@/lib/bags";
+import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS, type Qualification } from "@/lib/bags";
+
+/** Nature de l'entrée (IN). */
+type EntryType = "cultivation" | "back_event" | "back_packaging" | "back_sampling" | "back_rework";
+const ENTRY_TYPES: Array<{ id: EntryType; label: string; reason: string }> = [
+  { id: "cultivation", label: "Nouvelle réception (Cultivation)", reason: "In from Cultivation" },
+  { id: "back_event", label: "Retour d'événement", reason: "Back from Event" },
+  { id: "back_packaging", label: "Retour de packaging", reason: "Back from Packaging" },
+  { id: "back_sampling", label: "Retour de sampling", reason: "Back from Sampling" },
+  { id: "back_rework", label: "Retour de rework", reason: "Back from Rework" },
+];
+const REASON_BY_ENTRY: Record<EntryType, string> = Object.fromEntries(
+  ENTRY_TYPES.map((e) => [e.id, e.reason]),
+) as Record<EntryType, string>;
+const ENTRY_BY_REASON = (r: string): EntryType => {
+  const norm = r.toLowerCase();
+  if (norm.includes("event")) return "back_event";
+  if (norm.includes("packaging")) return "back_packaging";
+  if (norm.includes("sampling")) return "back_sampling";
+  if (norm.includes("rework")) return "back_rework";
+  return "cultivation";
+};
+
+/** Nature de la sortie (OUT). */
+type OutType = "event" | "facility";
+const OUT_TYPES: Array<{ id: OutType; label: string; destination: string; hint: string }> = [
+  { id: "event", label: "Pour événement", destination: "For Event", hint: "retour attendu (inventaire temporaire)" },
+  { id: "facility", label: "Out of Facility", destination: "Out of Facility", hint: "sortie définitive" },
+];
+const DESTINATION_BY_OUT: Record<OutType, string> = { event: "For Event", facility: "Out of Facility" };
+const OUT_BY_DESTINATION = (d: string): OutType =>
+  /out\s*of\s*facility/i.test(d) ? "facility" : "event";
+
 
 type Props = {
   open: boolean;
@@ -251,9 +283,77 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       return next;
     });
   };
+
+  // ============= IN entry-type + OUT out-type =============
+  const isIn = form.direction === "IN";
+  const [entryType, setEntryType] = useState<EntryType>("cultivation");
+  const [outType, setOutType] = useState<OutType>("event");
+  const isReturn = isIn && entryType !== "cultivation";
+  const showReturnBuilder = isReturn && !isEditing;
+
+  // Return bag builder rows
+  type ReturnRow = { id: string; qualification: Qualification | ""; grams: number };
+  const [returnBags, setReturnBags] = useState<ReturnRow[]>([]);
+  const addReturnBag = () => setReturnBags((r) => [...r, { id: crypto.randomUUID(), qualification: "", grams: 0 }]);
+  const updateReturnBag = (id: string, patch: Partial<ReturnRow>) =>
+    setReturnBags((r) => r.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const removeReturnBag = (id: string) => setReturnBags((r) => r.filter((b) => b.id !== id));
+
+  // Reset entryType/outType/returnBags when modal opens or editing changes
+  useEffect(() => {
+    if (!open) return;
+    if (editing) {
+      if (editing.direction === "IN") setEntryType(ENTRY_BY_REASON(editing.reason || ""));
+      else setOutType(OUT_BY_DESTINATION(editing.destination || editing.reason || ""));
+      setReturnBags([]);
+    } else {
+      setEntryType("cultivation");
+      setOutType("event");
+      setReturnBags([]);
+    }
+  }, [open, editing]);
+
+  // When user switches to a return type, seed one empty row
+  useEffect(() => {
+    if (showReturnBuilder && returnBags.length === 0) {
+      setReturnBags([{ id: crypto.randomUUID(), qualification: "", grams: 0 }]);
+    }
+    if (!showReturnBuilder) return;
+  }, [showReturnBuilder]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const returnTotalG = returnBags.reduce((s, b) => s + (Number(b.grams) || 0), 0);
+  const returnUnits = returnBags.filter((b) => (Number(b.grams) || 0) > 0).length;
+
+  // Sync form from return builder
+  useEffect(() => {
+    if (!showReturnBuilder) return;
+    const qualifs = new Set(returnBags.map((b) => b.qualification).filter(Boolean));
+    const singleQualif = qualifs.size === 1 ? Array.from(qualifs)[0] : "";
+    setForm((f) => ({
+      ...f,
+      quantity_g: +returnTotalG.toFixed(2),
+      units: returnUnits,
+      product_format: f.product_format || "Bulk",
+      comment2: singleQualif || f.comment2,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReturnBuilder, returnTotalG, returnUnits]);
+
   const mutation = useMutation({
     mutationFn: async () => {
-      const payload = { ...form, reason: form.destination || form.reason };
+      // Normalize reason / destination based on direction + sub-type
+      let reason = form.reason;
+      let destination = form.destination;
+      if (form.direction === "IN" && !editing) {
+        reason = REASON_BY_ENTRY[entryType];
+        if (entryType === "cultivation" && !destination) destination = "Cultivation";
+      } else if (form.direction === "OUT" && !editing) {
+        destination = DESTINATION_BY_OUT[outType];
+        reason = destination;
+      } else {
+        reason = form.destination || form.reason;
+      }
+      const payload = { ...form, reason, destination };
       if (editing) return updateMovement(editing.id, payload);
       return insertMovement(payload);
     },
@@ -294,6 +394,48 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           {isOut ? <><ArrowUp className="h-5 w-5" /> OUT (Sortie)</> : <><ArrowDown className="h-5 w-5" /> IN (Entrée)</>}
           <span className="text-xs font-normal opacity-70 ml-2">Verrouillé</span>
         </div>
+
+        {/* Sub-type selector (nature de l'événement) */}
+        {!isEditing && (
+          <div>
+            <Label className="text-xs mb-1 block">Nature de l'événement</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {isOut
+                ? OUT_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setOutType(t.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs border transition",
+                        outType === t.id
+                          ? "border-red-500 bg-red-500/10 text-red-700 font-semibold"
+                          : "border-border text-muted-foreground hover:bg-accent",
+                      )}
+                      title={t.hint}
+                    >
+                      {t.label}
+                      <span className="ml-1 text-[10px] opacity-70">· {t.hint}</span>
+                    </button>
+                  ))
+                : ENTRY_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setEntryType(t.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs border transition",
+                        entryType === t.id
+                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-semibold"
+                          : "border-border text-muted-foreground hover:bg-accent",
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -412,8 +554,67 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
             </div>
           )}
 
-          {/* ============= IN: product type / format / qty / units / destination ============= */}
-          {!showBagPicker && (
+          {/* ============= IN: Return bag builder ============= */}
+          {showReturnBuilder && (
+            <div className="col-span-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs flex items-center gap-1">
+                  <PackageOpen className="h-3.5 w-3.5" /> Sacs retournés
+                </Label>
+                <div className="text-xs text-muted-foreground">
+                  {returnUnits} sac{returnUnits > 1 ? "s" : ""} · <span className="font-mono font-semibold text-foreground">{returnTotalG.toFixed(2)} g</span>
+                </div>
+              </div>
+              <div className="rounded-md border divide-y">
+                {returnBags.map((b, i) => (
+                  <div key={b.id} className="flex items-center gap-2 p-2">
+                    <span className="text-[10px] text-muted-foreground font-mono w-6">#{i + 1}</span>
+                    <Select
+                      value={b.qualification || "__none__"}
+                      onValueChange={(v) => updateReturnBag(b.id, { qualification: v === "__none__" ? "" : (v as Qualification) })}
+                    >
+                      <SelectTrigger className="h-8 flex-1 min-w-[180px]">
+                        <SelectValue placeholder="Qualification…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {QUALIFICATIONS.map((q) => (
+                          <SelectItem key={q} value={q}>{q}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={b.grams || ""}
+                      placeholder="grammes"
+                      onChange={(e) => updateReturnBag(b.id, { grams: parseFloat(e.target.value) || 0 })}
+                      className="h-8 w-28 font-mono"
+                    />
+                    <span className="text-xs text-muted-foreground">g</span>
+                    <button
+                      type="button"
+                      onClick={() => removeReturnBag(b.id)}
+                      className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-red-600"
+                      title="Retirer ce sac"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={addReturnBag}>
+                <Plus className="h-4 w-4 mr-1" /> Ajouter un sac
+              </Button>
+              <div className="text-[11px] text-muted-foreground">
+                Quantité et Units se calculent à partir des sacs. La qualification renseigne automatiquement Comment #2 si tous les sacs partagent la même.
+              </div>
+            </div>
+          )}
+
+          {/* ============= IN Cultivation: classic form ============= */}
+          {!showBagPicker && !showReturnBuilder && (
             <>
               <div>
                 <Label className="text-xs">Product Type</Label>
@@ -463,7 +664,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
               </div>
 
               <div className="col-span-2">
-                <Label className="text-xs">Destination / Raison</Label>
+                <Label className="text-xs">Destination / Raison (facultatif)</Label>
                 <ComboCreate
                   value={form.destination}
                   onChange={(v) => set("destination", v)}
@@ -505,7 +706,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           </div>
 
           {/* IN-only ancillary fields (units2, unit_indicator, stamps, SKU) */}
-          {!showBagPicker && (
+          {!showBagPicker && !showReturnBuilder && (
             <>
               <div>
                 <Label className="text-xs">Units 2</Label>
