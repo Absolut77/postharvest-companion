@@ -32,10 +32,10 @@ function Inventory() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [prefill, setPrefill] = useState<{ batch_id: string; strain: string; comment2: string } | null>(null);
+  const [prefill, setPrefill] = useState<{ batch_id: string; strain: string; comment2: string; direction: "OUT" } | null>(null);
 
   const handleLogEvent = (batch_id: string, strain: string, qualif: string) => {
-    setPrefill({ batch_id, strain, comment2: qualif });
+    setPrefill({ batch_id, strain, comment2: qualif, direction: "OUT" });
     setModalOpen(true);
   };
 

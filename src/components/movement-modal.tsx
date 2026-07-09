@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
-import { Check, ChevronsUpDown, Plus, ArrowDown, ArrowUp, X } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, ArrowDown, ArrowUp, X, PackageOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { insertMovement, updateMovement } from "@/lib/movements";
@@ -23,6 +23,7 @@ import type { Movement, Direction } from "@/lib/types";
 import { useCurrentUser } from "@/lib/current-user";
 import { toast } from "sonner";
 import { ColoredCheckbox } from "./colored-checkbox";
+import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS } from "@/lib/bags";
 
 type Props = {
   open: boolean;
@@ -193,6 +194,63 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     });
   };
 
+  // ============= OUT bag picker =============
+  const isOut = form.direction === "OUT";
+  const isEditing = !!editing;
+  const showBagPicker = isOut && !isEditing;
+
+  const [selectedBagKeys, setSelectedBagKeys] = useState<Set<string>>(new Set());
+
+  // Reset selection when batch changes or modal reopens
+  useEffect(() => { setSelectedBagKeys(new Set()); }, [form.batch_id, open]);
+
+  const availableBags = useMemo<AvailableBag[]>(
+    () => (showBagPicker && form.batch_id ? computeAvailableBags(form.batch_id, movements) : []),
+    [showBagPicker, form.batch_id, movements],
+  );
+  const netByQualif = useMemo(
+    () => (showBagPicker && form.batch_id ? computeNetByQualification(form.batch_id, movements) : new Map()),
+    [showBagPicker, form.batch_id, movements],
+  );
+
+  const bagsByQualif = useMemo(() => {
+    const map = new Map<string, AvailableBag[]>();
+    for (const b of availableBags) {
+      if (!map.has(b.qualification)) map.set(b.qualification, []);
+      map.get(b.qualification)!.push(b);
+    }
+    return map;
+  }, [availableBags]);
+
+  const selectedBags = useMemo(
+    () => availableBags.filter((b) => selectedBagKeys.has(b.key)),
+    [availableBags, selectedBagKeys],
+  );
+  const selectedTotalG = selectedBags.reduce((s, b) => s + b.grams, 0);
+  const selectedUnits = selectedBags.length;
+
+  // Sync form fields from selected bags
+  useEffect(() => {
+    if (!showBagPicker) return;
+    const qualifs = new Set(selectedBags.map((b) => b.qualification));
+    const singleQualif = qualifs.size === 1 ? Array.from(qualifs)[0] : "";
+    setForm((f) => ({
+      ...f,
+      quantity_g: +selectedTotalG.toFixed(2),
+      units: selectedUnits,
+      product_format: f.product_format || "Bulk",
+      comment2: singleQualif || f.comment2,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBagPicker, selectedTotalG, selectedUnits]);
+
+  const toggleBag = (key: string) => {
+    setSelectedBagKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
   const mutation = useMutation({
     mutationFn: async () => {
       const payload = { ...form, reason: form.destination || form.reason };
@@ -224,32 +282,17 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           <DialogDescription>Toute saisie ici met à jour l'inventaire automatiquement.</DialogDescription>
         </DialogHeader>
 
-        {/* Direction */}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => set("direction", "IN")}
-            className={cn(
-              "h-14 rounded-md border-2 flex items-center justify-center gap-2 font-semibold transition",
-              form.direction === "IN"
-                ? "border-emerald-500 bg-emerald-500/10 text-emerald-700"
-                : "border-border text-muted-foreground hover:bg-accent"
-            )}
-          >
-            <ArrowDown className="h-5 w-5" /> IN (Entrée)
-          </button>
-          <button
-            type="button"
-            onClick={() => set("direction", "OUT")}
-            className={cn(
-              "h-14 rounded-md border-2 flex items-center justify-center gap-2 font-semibold transition",
-              form.direction === "OUT"
-                ? "border-red-500 bg-red-500/10 text-red-700"
-                : "border-border text-muted-foreground hover:bg-accent"
-            )}
-          >
-            <ArrowUp className="h-5 w-5" /> OUT (Sortie)
-          </button>
+        {/* Direction lock banner */}
+        <div
+          className={cn(
+            "h-12 rounded-md border-2 flex items-center justify-center gap-2 font-semibold",
+            isOut
+              ? "border-red-500 bg-red-500/10 text-red-700"
+              : "border-emerald-500 bg-emerald-500/10 text-emerald-700",
+          )}
+        >
+          {isOut ? <><ArrowUp className="h-5 w-5" /> OUT (Sortie)</> : <><ArrowDown className="h-5 w-5" /> IN (Entrée)</>}
+          <span className="text-xs font-normal opacity-70 ml-2">Verrouillé</span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -293,64 +336,145 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
             />
           </div>
 
-          <div>
-            <Label className="text-xs">Product Type</Label>
-            <ComboCreate
-              value={form.product_type}
-              onChange={(v) => set("product_type", v)}
-              options={allProductTypes}
-              placeholder="Type…"
-              createLabel="Créer le type"
-              onClear={() => set("product_type", "")}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Product Format</Label>
-            <div className="flex items-center gap-1">
-              <Select value={form.product_format} onValueChange={(v) => set("product_format", v)}>
-                <SelectTrigger><SelectValue placeholder="Format…" /></SelectTrigger>
-                <SelectContent>
-                  {allFormats.map((f) => (
-                    <SelectItem key={f} value={f}>{f}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.product_format && (
-                <ClearBtn onClick={() => set("product_format", "")} />
+          {/* ============= OUT: Bag picker ============= */}
+          {showBagPicker && (
+            <div className="col-span-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs flex items-center gap-1">
+                  <PackageOpen className="h-3.5 w-3.5" /> Sélection de sacs disponibles
+                </Label>
+                <div className="text-xs text-muted-foreground">
+                  {selectedUnits} sac{selectedUnits > 1 ? "s" : ""} · <span className="font-mono font-semibold text-foreground">{selectedTotalG.toFixed(2)} g</span>
+                </div>
+              </div>
+              {!form.batch_id ? (
+                <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+                  Sélectionne d'abord une strain et un batch.
+                </div>
+              ) : availableBags.length === 0 ? (
+                <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+                  Aucun sac "In from Cultivation" trouvé pour ce lot.
+                </div>
+              ) : (
+                <div className="rounded-md border max-h-72 overflow-y-auto divide-y">
+                  {QUALIFICATIONS.filter((q) => bagsByQualif.has(q)).map((q) => {
+                    const bags = bagsByQualif.get(q)!;
+                    const net = netByQualif.get(q) ?? 0;
+                    return (
+                      <div key={q} className="p-2">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="text-xs font-semibold">{q}</div>
+                          <div className={cn(
+                            "text-[11px] font-mono",
+                            net < 0 ? "text-red-600" : "text-muted-foreground",
+                          )}>
+                            net stock : {net.toFixed(1)} g
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          {bags.map((b) => {
+                            const checked = selectedBagKeys.has(b.key);
+                            return (
+                              <label
+                                key={b.key}
+                                className={cn(
+                                  "flex items-center gap-2 rounded border px-2 py-1.5 text-xs cursor-pointer transition",
+                                  checked ? "border-primary bg-primary/10" : "hover:bg-accent",
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleBag(b.key)}
+                                  className="h-3.5 w-3.5 accent-primary"
+                                />
+                                <span className="font-mono font-semibold">{b.grams.toFixed(0)} g</span>
+                                <span className="text-muted-foreground">
+                                  {b.isFull ? `plein (${b.bagSize} g)` : "reste"}
+                                </span>
+                                <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                                  {b.sourceDate}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedTotalG > 0 && (
+                <div className="text-[11px] text-muted-foreground">
+                  Quantité et Units sont calculées automatiquement à partir de la sélection.
+                </div>
               )}
             </div>
-          </div>
+          )}
 
-          <div>
-            <Label className="text-xs flex items-center gap-2">
-              Quantity (G)
-              {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto ({gPerUnit}g/u)</span>}
-            </Label>
-            <Input type="number" step="0.01" min="0" value={form.quantity_g}
-              onChange={(e) => onQuantityChange(parseFloat(e.target.value) || 0)}
-              className="font-mono" />
-          </div>
-          <div>
-            <Label className="text-xs flex items-center gap-2">
-              Units
-              {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto</span>}
-            </Label>
-            <Input type="number" min="0" value={form.units}
-              onChange={(e) => onUnitsChange(parseInt(e.target.value || "0", 10))}
-              className="font-mono" />
-          </div>
+          {/* ============= IN: product type / format / qty / units / destination ============= */}
+          {!showBagPicker && (
+            <>
+              <div>
+                <Label className="text-xs">Product Type</Label>
+                <ComboCreate
+                  value={form.product_type}
+                  onChange={(v) => set("product_type", v)}
+                  options={allProductTypes}
+                  placeholder="Type…"
+                  createLabel="Créer le type"
+                  onClear={() => set("product_type", "")}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Product Format</Label>
+                <div className="flex items-center gap-1">
+                  <Select value={form.product_format} onValueChange={(v) => set("product_format", v)}>
+                    <SelectTrigger><SelectValue placeholder="Format…" /></SelectTrigger>
+                    <SelectContent>
+                      {allFormats.map((f) => (
+                        <SelectItem key={f} value={f}>{f}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {form.product_format && (
+                    <ClearBtn onClick={() => set("product_format", "")} />
+                  )}
+                </div>
+              </div>
 
-          <div className="col-span-2">
-            <Label className="text-xs">Destination</Label>
-            <ComboCreate
-              value={form.destination}
-              onChange={(v) => set("destination", v)}
-              options={allDestinations}
-              placeholder="Destination…"
-              createLabel="Créer une destination"
-              onClear={() => set("destination", "")}
-            />
-          </div>
+              <div>
+                <Label className="text-xs flex items-center gap-2">
+                  Quantity (G)
+                  {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto ({gPerUnit}g/u)</span>}
+                </Label>
+                <Input type="number" step="0.01" min="0" value={form.quantity_g}
+                  onChange={(e) => onQuantityChange(parseFloat(e.target.value) || 0)}
+                  className="font-mono" />
+              </div>
+              <div>
+                <Label className="text-xs flex items-center gap-2">
+                  Units
+                  {isPackaged && gPerUnit && <span className="text-[10px] text-primary">↔ auto</span>}
+                </Label>
+                <Input type="number" min="0" value={form.units}
+                  onChange={(e) => onUnitsChange(parseInt(e.target.value || "0", 10))}
+                  className="font-mono" />
+              </div>
+
+              <div className="col-span-2">
+                <Label className="text-xs">Destination / Raison</Label>
+                <ComboCreate
+                  value={form.destination}
+                  onChange={(v) => set("destination", v)}
+                  options={allDestinations}
+                  placeholder="Destination…"
+                  createLabel="Créer une destination"
+                  onClear={() => set("destination", "")}
+                />
+              </div>
+            </>
+          )}
 
           <div className="col-span-2">
             <Label className="text-xs">Comment #1</Label>
@@ -371,58 +495,68 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           </div>
 
           <div className="col-span-2">
-            <Label className="text-xs">Comment #2</Label>
+            <Label className="text-xs">
+              Comment #2
+              {showBagPicker && form.comment2 && (
+                <span className="ml-2 text-[10px] text-primary">auto : qualification</span>
+              )}
+            </Label>
             <Input value={form.comment2} onChange={(e) => set("comment2", e.target.value)} />
           </div>
 
-          <div>
-            <Label className="text-xs">Units 2</Label>
-            <Input type="number" min="0" step="0.01" value={form.units2}
-              onChange={(e) => set("units2", parseFloat(e.target.value) || 0)}
-              className="font-mono" />
-          </div>
-          <div>
-            <Label className="text-xs">Unit Indicator</Label>
-            <ComboCreate
-              value={form.unit_indicator}
-              onChange={(v) => set("unit_indicator", v)}
-              options={allIndicators}
-              placeholder="g / u / kg…"
-              createLabel="Créer l'indicateur"
-              onClear={() => set("unit_indicator", "")}
-            />
-          </div>
+          {/* IN-only ancillary fields (units2, unit_indicator, stamps, SKU) */}
+          {!showBagPicker && (
+            <>
+              <div>
+                <Label className="text-xs">Units 2</Label>
+                <Input type="number" min="0" step="0.01" value={form.units2}
+                  onChange={(e) => set("units2", parseFloat(e.target.value) || 0)}
+                  className="font-mono" />
+              </div>
+              <div>
+                <Label className="text-xs">Unit Indicator</Label>
+                <ComboCreate
+                  value={form.unit_indicator}
+                  onChange={(v) => set("unit_indicator", v)}
+                  options={allIndicators}
+                  placeholder="g / u / kg…"
+                  createLabel="Créer l'indicateur"
+                  onClear={() => set("unit_indicator", "")}
+                />
+              </div>
 
-          <div>
-            <Label className="text-xs">Timbre utilisé</Label>
-            <ComboCreate
-              value={form.stamp_used}
-              onChange={(v) => set("stamp_used", v)}
-              options={allStamps}
-              placeholder="N° / réf. timbre…"
-              createLabel="Ajouter"
-              onClear={() => set("stamp_used", "")}
-              mono
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Type de timbre</Label>
-            <div className="flex items-center gap-1">
-              <Select value={form.stamp_type || "__none__"} onValueChange={(v) => set("stamp_type", v === "__none__" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="Type…" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">—</SelectItem>
-                  {STAMP_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              {form.stamp_type && <ClearBtn onClick={() => set("stamp_type", "")} />}
-            </div>
-          </div>
+              <div>
+                <Label className="text-xs">Timbre utilisé</Label>
+                <ComboCreate
+                  value={form.stamp_used}
+                  onChange={(v) => set("stamp_used", v)}
+                  options={allStamps}
+                  placeholder="N° / réf. timbre…"
+                  createLabel="Ajouter"
+                  onClear={() => set("stamp_used", "")}
+                  mono
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Type de timbre</Label>
+                <div className="flex items-center gap-1">
+                  <Select value={form.stamp_type || "__none__"} onValueChange={(v) => set("stamp_type", v === "__none__" ? "" : v)}>
+                    <SelectTrigger><SelectValue placeholder="Type…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">—</SelectItem>
+                      {STAMP_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {form.stamp_type && <ClearBtn onClick={() => set("stamp_type", "")} />}
+                </div>
+              </div>
 
-          <div className="col-span-2">
-            <Label className="text-xs">SKU</Label>
-            <Input value={form.sku} onChange={(e) => set("sku", e.target.value)} className="font-mono" />
-          </div>
+              <div className="col-span-2">
+                <Label className="text-xs">SKU</Label>
+                <Input value={form.sku} onChange={(e) => set("sku", e.target.value)} className="font-mono" />
+              </div>
+            </>
+          )}
 
           <div className="col-span-2">
             <Label className="text-xs">Additional Comments</Label>

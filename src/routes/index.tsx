@@ -55,14 +55,16 @@ function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [modalOpen, setModalOpen] = useState(false);
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
+  const [newDirection, setNewDirection] = useState<"IN" | "OUT">("IN");
 
   const selectedKey = ymd(selectedDate);
   const dayEvents = byDay.get(selectedKey) ?? [];
 
   const eventDays = useMemo(() => Array.from(byDay.keys()).map((d) => new Date(d + "T00:00")), [byDay]);
 
-  const openAddForDate = (d: Date) => {
+  const openAddForDate = (d: Date, dir: "IN" | "OUT") => {
     setPrefillDate(ymd(d));
+    setNewDirection(dir);
     setModalOpen(true);
   };
 
@@ -102,9 +104,14 @@ function Dashboard() {
               <CalendarDays className="h-5 w-5 text-primary" />
               <h2 className="font-semibold text-lg">Calendrier</h2>
             </div>
-            <Button size="sm" onClick={() => openAddForDate(selectedDate)}>
-              <Plus className="h-4 w-4 mr-1" /> Ajouter
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" onClick={() => openAddForDate(selectedDate, "IN")} className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-2">
+                <ArrowDown className="h-3.5 w-3.5 mr-1" /> IN
+              </Button>
+              <Button size="sm" onClick={() => openAddForDate(selectedDate, "OUT")} className="bg-red-600 hover:bg-red-700 text-white h-8 px-2">
+                <ArrowUp className="h-3.5 w-3.5 mr-1" /> OUT
+              </Button>
+            </div>
           </div>
           <Calendar
             mode="single"
@@ -133,9 +140,14 @@ function Dashboard() {
                 {dayEvents.length === 0 ? "Aucun événement" : `${dayEvents.length} événement(s)`}
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => openAddForDate(selectedDate)}>
-              <Plus className="h-4 w-4 mr-1" /> Nouveau
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => openAddForDate(selectedDate, "IN")} className="border-emerald-500 text-emerald-700 hover:bg-emerald-50">
+                <ArrowDown className="h-3.5 w-3.5 mr-1" /> IN
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openAddForDate(selectedDate, "OUT")} className="border-red-500 text-red-700 hover:bg-red-50">
+                <ArrowUp className="h-3.5 w-3.5 mr-1" /> OUT
+              </Button>
+            </div>
           </div>
           <div className="max-h-[380px] overflow-y-auto -mx-1">
             {dayEvents.length === 0 ? (
@@ -184,6 +196,7 @@ function Dashboard() {
         editing={null}
         movements={movements}
         defaultDate={prefillDate ?? undefined}
+        prefill={{ direction: newDirection }}
       />
     </div>
   );

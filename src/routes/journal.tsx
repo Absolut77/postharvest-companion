@@ -45,6 +45,7 @@ function Journal() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Movement | null>(null);
+  const [newDirection, setNewDirection] = useState<"IN" | "OUT">("IN");
 
   const allBatches = useMemo(
     () => Array.from(new Set(movements.map((m) => m.batch_id).filter(Boolean))).sort(),
@@ -91,7 +92,7 @@ function Journal() {
     onError: (e: any) => toast.error(e.message ?? "Erreur"),
   });
 
-  const openNew = () => { setEditing(null); setModalOpen(true); };
+  const openNew = (dir: "IN" | "OUT") => { setEditing(null); setNewDirection(dir); setModalOpen(true); };
   const openEdit = (m: Movement) => { setEditing(m); setModalOpen(true); };
 
   const Th = ({ k, children, align = "left", className }: { k: SortKey; children: React.ReactNode; align?: "left" | "right" | "center"; className?: string }) => (
@@ -122,9 +123,14 @@ function Journal() {
             Seule source de saisie. L'inventaire se met à jour automatiquement.
           </p>
         </div>
-        <Button onClick={openNew} size="lg" className="shadow">
-          <Plus className="h-5 w-5 mr-1" /> Ajouter un événement
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => openNew("IN")} size="lg" className="shadow bg-emerald-600 hover:bg-emerald-700 text-white">
+            <ArrowDown className="h-5 w-5 mr-1" /> IN — Entrée
+          </Button>
+          <Button onClick={() => openNew("OUT")} size="lg" className="shadow bg-red-600 hover:bg-red-700 text-white">
+            <ArrowUp className="h-5 w-5 mr-1" /> OUT — Sortie
+          </Button>
+        </div>
       </div>
 
       <Card className="p-3 flex flex-wrap items-end gap-3">
@@ -275,6 +281,7 @@ function Journal() {
         onOpenChange={setModalOpen}
         editing={editing}
         movements={movements}
+        prefill={editing ? undefined : { direction: newDirection }}
       />
     </div>
   );
