@@ -317,6 +317,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       setPackagedBatch(editing.comment2 || "");
       setRecipient(editing.additional_comments || "");
       setReturnBags([]);
+      setCultRows([]);
       setCultivationQualif(editing.comment2 || "");
     } else {
       setInCat("cultivation");
@@ -327,6 +328,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       setPackagedBatch("");
       setRecipient("");
       setReturnBags([]);
+      setCultRows([]);
     }
   }, [open, editing]);
 
