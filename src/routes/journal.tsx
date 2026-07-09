@@ -92,7 +92,7 @@ function Journal() {
     onError: (e: any) => toast.error(e.message ?? "Erreur"),
   });
 
-  const openNew = () => { setEditing(null); setModalOpen(true); };
+  const openNew = (dir: "IN" | "OUT") => { setEditing(null); setNewDirection(dir); setModalOpen(true); };
   const openEdit = (m: Movement) => { setEditing(m); setModalOpen(true); };
 
   const Th = ({ k, children, align = "left", className }: { k: SortKey; children: React.ReactNode; align?: "left" | "right" | "center"; className?: string }) => (
