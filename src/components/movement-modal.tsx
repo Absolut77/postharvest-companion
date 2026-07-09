@@ -383,6 +383,195 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     }
   }, [cultivationQualif, isIn, inCat, isEditing]);
 
+  // ============= Configuration des champs par flux =============
+  type FieldCfg = { show: boolean; label?: string; placeholder?: string };
+  type FlowCfg = {
+    subtitle: string;
+    productType: FieldCfg;
+    productFormat: FieldCfg;
+    quantity: FieldCfg;
+    units: FieldCfg;
+    destination: FieldCfg;
+    comment1: FieldCfg;
+    comment2: FieldCfg;
+    additionalComments: FieldCfg;
+    unitIndicator: FieldCfg;
+    units2: FieldCfg;
+    stamps: FieldCfg;
+    sku: FieldCfg;
+    adjustment: FieldCfg;
+    elevated: FieldCfg;
+  };
+  const HIDE: FieldCfg = { show: false };
+  const SHOW = (label?: string, placeholder?: string): FieldCfg => ({ show: true, label, placeholder });
+
+  const flow: FlowCfg = useMemo(() => {
+    const base: FlowCfg = {
+      subtitle: "",
+      productType: SHOW("Product Type"),
+      productFormat: SHOW("Product Format"),
+      quantity: SHOW("Quantity (G)"),
+      units: SHOW("Units"),
+      destination: SHOW("Destination / Raison (facultatif)"),
+      comment1: SHOW("Comment #1"),
+      comment2: SHOW("Comment #2"),
+      additionalComments: SHOW("Additional Comments"),
+      unitIndicator: SHOW("Unit Indicator"),
+      units2: SHOW("Units 2"),
+      stamps: SHOW("Timbre"),
+      sku: SHOW("SKU"),
+      adjustment: SHOW("Adjustment Validation"),
+      elevated: SHOW("Elevated Update"),
+    };
+    if (isEditing) return base;
+
+    if (isIn) {
+      switch (inCat) {
+        case "cultivation":
+          return { ...base, subtitle: "Réception depuis Cultivation",
+            productType: SHOW("Type de produit", "Flower, Trim…"),
+            productFormat: SHOW("Format (auto selon qualification)"),
+            quantity: SHOW("Quantité totale (g)"),
+            units: SHOW("Nombre de sacs"),
+            destination: HIDE, comment2: HIDE,
+            comment1: SHOW("Note cultivation (facultatif)"),
+            additionalComments: SHOW("Commentaires additionnels (facultatif)"),
+            unitIndicator: HIDE, units2: HIDE, stamps: HIDE, sku: HIDE };
+        case "back_pack":
+          return { ...base, subtitle: "Retour de Packaging (reste de bulk)",
+            productType: HIDE, productFormat: HIDE, quantity: HIDE, units: HIDE,
+            destination: HIDE, comment2: HIDE,
+            comment1: SHOW("Note packaging (facultatif)"),
+            additionalComments: SHOW("Commentaires additionnels (facultatif)"),
+            unitIndicator: HIDE, units2: HIDE, stamps: HIDE, sku: HIDE };
+        case "back_samp":
+          return { ...base, subtitle: "Retour de Sampling",
+            productType: HIDE, productFormat: HIDE, quantity: HIDE, units: HIDE,
+            destination: HIDE, comment2: HIDE,
+            comment1: SHOW("Note sampling (facultatif)"),
+            additionalComments: SHOW("Commentaires additionnels (facultatif)"),
+            unitIndicator: HIDE, units2: HIDE, stamps: HIDE, sku: HIDE };
+        case "back_rew":
+          return { ...base, subtitle: "Retour de Rework",
+            productType: HIDE, productFormat: HIDE, quantity: HIDE, units: HIDE,
+            destination: HIDE, comment2: HIDE,
+            comment1: SHOW("Note rework (facultatif)"),
+            additionalComments: SHOW("Commentaires additionnels (facultatif)"),
+            unitIndicator: HIDE, units2: HIDE, stamps: HIDE, sku: HIDE };
+        case "standby":
+          return { ...base, subtitle: "Standby for Shipment (Master Cases prêts)",
+            productType: SHOW("Type de produit"),
+            productFormat: SHOW("Format (Master Case)"),
+            quantity: SHOW("Quantité (g)"),
+            units: SHOW("Nombre de Master Cases"),
+            destination: HIDE, comment2: HIDE,
+            comment1: SHOW("Note expédition (facultatif)"),
+            additionalComments: SHOW("Commentaires additionnels"),
+            unitIndicator: HIDE,
+            units2: SHOW("Unités totales (bulk éq.)"),
+            stamps: SHOW("Timbre utilisé"),
+            sku: SHOW("SKU") };
+        case "external":
+          return { ...base, subtitle: "Retour externe (RTV)",
+            productType: SHOW("Type de produit"),
+            productFormat: SHOW("Format"),
+            quantity: SHOW("Quantité (g)"),
+            units: SHOW("Unités"),
+            destination: HIDE,
+            comment1: SHOW("Motif retour"),
+            comment2: SHOW("Détails retour (facultatif)"),
+            additionalComments: HIDE,
+            unitIndicator: HIDE, units2: HIDE, stamps: HIDE,
+            sku: SHOW("SKU (facultatif)") };
+      }
+    } else {
+      if (outCat === "facility") {
+        switch (facilityPurpose) {
+          case "b2b_sale":
+            return { ...base, subtitle: "Sortie — Vente B2B (Bulk)",
+              productType: HIDE, productFormat: HIDE, quantity: HIDE, units: HIDE,
+              destination: HIDE, comment2: HIDE, additionalComments: HIDE, unitIndicator: HIDE,
+              comment1: SHOW("Note vente (facultatif)"),
+              units2: SHOW("Poids déclaré (g)"),
+              stamps: SHOW("Timbre utilisé"),
+              sku: SHOW("SKU") };
+          case "messager":
+            return { ...base, subtitle: "Sortie — Livraison Messager (Master Case)",
+              productType: SHOW("Type de produit"),
+              productFormat: SHOW("Format (Master Case)"),
+              quantity: SHOW("Quantité (g)"),
+              units: SHOW("Nombre de Master Cases"),
+              destination: HIDE, comment2: HIDE, unitIndicator: HIDE,
+              comment1: SHOW("Note livraison (facultatif)"),
+              additionalComments: SHOW("Commentaires additionnels"),
+              units2: SHOW("Unités totales"),
+              stamps: SHOW("Timbre utilisé"),
+              sku: SHOW("SKU") };
+          case "b2b_sample":
+          case "lab":
+          case "educational":
+            return { ...base,
+              subtitle: facilityPurpose === "lab" ? "Sortie — Analyse laboratoire"
+                : facilityPurpose === "educational" ? "Sortie — Échantillon éducation"
+                : "Sortie — Échantillon B2B",
+              productType: SHOW("Type d'échantillon"),
+              productFormat: HIDE,
+              quantity: SHOW("Quantité (g)"),
+              units: SHOW("Nombre d'échantillons"),
+              destination: HIDE, comment2: HIDE, additionalComments: HIDE, unitIndicator: HIDE,
+              comment1: SHOW("Note échantillon (facultatif)"),
+              units2: HIDE, stamps: HIDE, sku: HIDE };
+          case "other":
+            return { ...base, subtitle: "Sortie — Autre motif",
+              productType: HIDE, productFormat: HIDE, quantity: HIDE, units: HIDE,
+              destination: SHOW("Motif / destination libre"),
+              comment1: SHOW("Note (facultatif)"),
+              comment2: SHOW("Détails complémentaires"),
+              additionalComments: SHOW("Commentaires additionnels"),
+              unitIndicator: HIDE, units2: HIDE, stamps: HIDE, sku: HIDE };
+        }
+      }
+      switch (outCat) {
+        case "packaging":
+          return { ...base, subtitle: "Vers Packaging (temporaire — retour attendu)",
+            productType: HIDE, productFormat: HIDE, quantity: HIDE, units: HIDE,
+            destination: HIDE, comment2: HIDE, unitIndicator: HIDE,
+            comment1: SHOW("Note packaging (facultatif)"),
+            additionalComments: SHOW("Commentaires additionnels"),
+            units2: HIDE, stamps: HIDE, sku: HIDE };
+        case "sampling":
+          return { ...base, subtitle: "Vers Sampling interne (temporaire)",
+            productType: SHOW("Type d'échantillon"),
+            productFormat: HIDE,
+            quantity: SHOW("Quantité (g)"),
+            units: SHOW("Nombre d'échantillons"),
+            destination: HIDE, unitIndicator: HIDE,
+            comment1: SHOW("Note sampling (facultatif)"),
+            comment2: SHOW("Motif sampling (facultatif)"),
+            additionalComments: SHOW("Commentaires additionnels"),
+            units2: HIDE, stamps: HIDE, sku: HIDE };
+        case "rework":
+          return { ...base, subtitle: "Vers Rework (temporaire — retour attendu)",
+            productType: HIDE, productFormat: HIDE, quantity: HIDE, units: HIDE,
+            destination: HIDE, comment2: HIDE, unitIndicator: HIDE,
+            comment1: SHOW("Motif rework"),
+            additionalComments: SHOW("Commentaires additionnels"),
+            units2: HIDE, stamps: HIDE, sku: HIDE };
+        case "destruction":
+          return { ...base, subtitle: "Destruction (définitive)",
+            productType: HIDE, productFormat: HIDE, quantity: HIDE, units: HIDE,
+            destination: HIDE, unitIndicator: HIDE,
+            comment1: SHOW("Motif destruction"),
+            comment2: SHOW("Réf. procès-verbal (facultatif)"),
+            additionalComments: SHOW("Commentaires additionnels"),
+            units2: HIDE, stamps: HIDE, sku: HIDE };
+      }
+    }
+    return base;
+  }, [isEditing, isIn, inCat, outCat, facilityPurpose]);
+
+
+
   const mutation = useMutation({
     mutationFn: async () => {
       let reason = form.reason;
