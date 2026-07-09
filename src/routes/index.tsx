@@ -104,9 +104,14 @@ function Dashboard() {
               <CalendarDays className="h-5 w-5 text-primary" />
               <h2 className="font-semibold text-lg">Calendrier</h2>
             </div>
-            <Button size="sm" onClick={() => openAddForDate(selectedDate)}>
-              <Plus className="h-4 w-4 mr-1" /> Ajouter
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" onClick={() => openAddForDate(selectedDate, "IN")} className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-2">
+                <ArrowDown className="h-3.5 w-3.5 mr-1" /> IN
+              </Button>
+              <Button size="sm" onClick={() => openAddForDate(selectedDate, "OUT")} className="bg-red-600 hover:bg-red-700 text-white h-8 px-2">
+                <ArrowUp className="h-3.5 w-3.5 mr-1" /> OUT
+              </Button>
+            </div>
           </div>
           <Calendar
             mode="single"
