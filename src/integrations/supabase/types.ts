@@ -28,6 +28,7 @@ export type Database = {
           direction: string
           elevated_update: boolean
           event_date: string
+          from_import: boolean
           id: string
           initials: string
           product_format: string
@@ -56,6 +57,7 @@ export type Database = {
           direction: string
           elevated_update?: boolean
           event_date?: string
+          from_import?: boolean
           id?: string
           initials: string
           product_format?: string
@@ -84,6 +86,7 @@ export type Database = {
           direction?: string
           elevated_update?: boolean
           event_date?: string
+          from_import?: boolean
           id?: string
           initials?: string
           product_format?: string

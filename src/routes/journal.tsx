@@ -72,8 +72,8 @@ function Journal() {
   const onExport = async () => {
     setExporting(true);
     try {
-      await exportToXlsx();
-      toast.success("Export téléchargé");
+      const res = await exportToXlsx();
+      toast.success(`Export téléchargé — ${res.appended} nouvelle(s) ligne(s) ajoutée(s) au modèle`);
     } catch (err: any) {
       toast.error(`Erreur d'export : ${err?.message ?? err}`);
     } finally {

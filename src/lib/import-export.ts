@@ -84,6 +84,12 @@ export type ImportResult = {
   templateSaved: boolean;
 };
 
+/**
+ * IMPORT
+ * - Lit uniquement les données de la feuille LOG 2026
+ * - Enregistre le fichier tel quel dans le bucket "templates" (modèle intact)
+ * - Purge la table `movements` et réinsère les lignes importées, marquées `from_import = true`
+ */
 export async function importFromXlsx(file: File): Promise<ImportResult> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
@@ -108,7 +114,7 @@ export async function importFromXlsx(file: File): Promise<ImportResult> {
   const get = (row: unknown[], field: string): unknown =>
     map[field] != null ? row[map[field]] : undefined;
 
-  const inserts: MovementInput[] = [];
+  const inserts: (MovementInput & { from_import: true })[] = [];
   let skipped = 0;
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i] as unknown[];
@@ -142,15 +148,19 @@ export async function importFromXlsx(file: File): Promise<ImportResult> {
       elevated_update: toBool(get(row, "elevated_update")),
       units2: toNum(get(row, "units2")),
       unit_indicator: toStr(get(row, "unit_indicator")),
+      from_import: true,
     });
   }
 
-  // Save uploaded file as template (preserves original styling for future exports)
+  // Sauvegarde le fichier tel quel comme modèle intact
   let templateSaved = false;
   try {
     const { error: upErr } = await supabase.storage
       .from(TEMPLATE_BUCKET)
-      .upload(TEMPLATE_PATH, file, { upsert: true, contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      .upload(TEMPLATE_PATH, file, {
+        upsert: true,
+        contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
     if (!upErr) templateSaved = true;
   } catch {
     /* non-blocking */
@@ -159,10 +169,7 @@ export async function importFromXlsx(file: File): Promise<ImportResult> {
   const { count: prevCount } = await supabase
     .from("movements")
     .select("*", { count: "exact", head: true });
-  const { error: delErr } = await supabase
-    .from("movements")
-    .delete()
-    .not("id", "is", null);
+  const { error: delErr } = await supabase.from("movements").delete().not("id", "is", null);
   if (delErr) throw delErr;
 
   const BATCH = 200;
@@ -176,29 +183,9 @@ export async function importFromXlsx(file: File): Promise<ImportResult> {
   return { inserted, skipped, deletedPrevious: prevCount ?? 0, templateSaved };
 }
 
-// -------- EXPORT (preserves template styling/filters/other sheets) --------
-
-function movementRow(m: Movement): (string | number | boolean | null)[] {
-  return [
-    m.event_date,
-    m.initials,
-    m.strain,
-    m.batch_id,
-    m.product_type,
-    m.product_format,
-    Number(m.quantity_g),
-    Number(m.units),
-    m.direction === "OUT" ? "Out" : "In",
-    m.comment1 || m.reason,
-    m.adjustment_validation ? 1 : null,
-    m.comment2,
-    Number(m.units2) || null,
-    m.unit_indicator,
-    m.sku,
-    m.additional_comments,
-    m.elevated_update ? 1 : null,
-  ];
-}
+// -------- EXPORT --------
+// N'écrit AUCUNE modification sur les lignes issues du modèle : on prend une copie
+// du fichier d'origine et on ajoute uniquement les mouvements créés dans l'app.
 
 async function fetchTemplateBuffer(): Promise<ArrayBuffer | null> {
   const { data, error } = await supabase.storage.from(TEMPLATE_BUCKET).download(TEMPLATE_PATH);
@@ -206,26 +193,50 @@ async function fetchTemplateBuffer(): Promise<ArrayBuffer | null> {
   return await data.arrayBuffer();
 }
 
-export async function exportToXlsx(): Promise<void> {
-  const movements = await listMovements();
-  const sorted = [...movements].sort((a, b) =>
-    a.event_date === b.event_date
-      ? (a.created_at ?? "").localeCompare(b.created_at ?? "")
-      : a.event_date.localeCompare(b.event_date),
-  );
+function movementCellByField(m: Movement, field: string): string | number | boolean | null {
+  switch (field) {
+    case "event_date": return m.event_date;
+    case "initials": return m.initials;
+    case "strain": return m.strain;
+    case "batch_id": return m.batch_id;
+    case "product_type": return m.product_type;
+    case "product_format": return m.product_format;
+    case "quantity_g": return Number(m.quantity_g);
+    case "units": return Number(m.units);
+    case "destination": return m.direction === "OUT" ? "Out" : "In";
+    case "comment1": return m.comment1 || m.reason;
+    case "adjustment_validation": return m.adjustment_validation ? 1 : null;
+    case "comment2": return m.comment2;
+    case "units2": return Number(m.units2) || null;
+    case "unit_indicator": return m.unit_indicator;
+    case "sku": return m.sku;
+    case "additional_comments": return m.additional_comments;
+    case "elevated_update": return m.elevated_update ? 1 : null;
+    default: return null;
+  }
+}
 
+export async function exportToXlsx(): Promise<{ appended: number }> {
   const templateBuf = await fetchTemplateBuffer();
   if (!templateBuf) {
     throw new Error(
       "Aucun modèle Excel enregistré. Importe d'abord ton fichier .xlsx d'origine — il sera conservé comme modèle pour tous les exports suivants.",
     );
   }
+  const movements = await listMovements();
+  const appRows = movements
+    .filter((m) => !m.from_import)
+    .sort((a, b) =>
+      a.event_date === b.event_date
+        ? (a.created_at ?? "").localeCompare(b.created_at ?? "")
+        : a.event_date.localeCompare(b.event_date),
+    );
 
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(templateBuf);
-  let ws = LOG_SHEET_CANDIDATES.map((n) => wb.getWorksheet(n)).find(Boolean);
+
+  let ws = LOG_SHEET_CANDIDATES.map((n) => wb.getWorksheet(n)).find(Boolean) as ExcelJS.Worksheet | undefined;
   if (!ws) {
-    // Fallback: first sheet whose row 1 contains a "Date" header
     for (const candidate of wb.worksheets) {
       const first = candidate.getRow(1);
       const headers: string[] = [];
@@ -236,31 +247,33 @@ export async function exportToXlsx(): Promise<void> {
   if (!ws) throw new Error("Impossible de trouver la feuille LOG 2026 dans le modèle.");
 
   const headerRow = ws.getRow(1);
-  const headers: string[] = [];
-  headerRow.eachCell({ includeEmpty: true }, (c) => headers.push(String(c.value ?? "")));
-  const map = buildHeaderMap(headers);
+  const headerCells: string[] = [];
+  headerRow.eachCell({ includeEmpty: true }, (c) => headerCells.push(String(c.value ?? "")));
+  const map = buildHeaderMap(headerCells);
+  const colCount = headerCells.length || 17;
 
-  // Wipe existing data rows (from row 2 to last used row), preserving header formatting
-  const lastRow = ws.actualRowCount;
-  for (let r = lastRow; r >= 2; r--) {
-    ws.spliceRows(r, 1);
+  // Cherche la première ligne vide APRÈS toutes les données existantes du modèle,
+  // pour ajouter à la suite sans rien écraser.
+  let appendAt = Math.max(ws.actualRowCount, 1) + 1;
+  // Précaution : si la dernière ligne réelle est vide, remonte pour compacter
+  while (appendAt > 2) {
+    const prev = ws.getRow(appendAt - 1);
+    const empty = prev.actualCellCount === 0;
+    if (!empty) break;
+    appendAt--;
   }
 
-  // Write new rows using header positions so we respect the template's column order
-  const fieldOrder: (keyof typeof HEADER_ALIASES)[] = [
-    "event_date", "initials", "strain", "batch_id", "product_type", "product_format",
-    "quantity_g", "units", "destination", "comment1", "adjustment_validation", "comment2",
-    "units2", "unit_indicator", "sku", "additional_comments", "elevated_update",
-  ];
-
-  for (const m of sorted) {
-    const values = movementRow(m);
-    const rowArr: (string | number | boolean | null)[] = new Array(headers.length).fill(null);
-    fieldOrder.forEach((field, i) => {
-      const colIdx = map[field];
-      if (colIdx != null) rowArr[colIdx] = values[i];
+  for (const m of appRows) {
+    const rowArr: (string | number | boolean | null)[] = new Array(colCount).fill(null);
+    for (const [field, colIdx] of Object.entries(map)) {
+      rowArr[colIdx] = movementCellByField(m, field);
+    }
+    const row = ws.getRow(appendAt);
+    rowArr.forEach((v, i) => {
+      row.getCell(i + 1).value = v as ExcelJS.CellValue;
     });
-    ws.addRow(rowArr);
+    row.commit();
+    appendAt++;
   }
 
   const out = await wb.xlsx.writeBuffer();
@@ -276,4 +289,6 @@ export async function exportToXlsx(): Promise<void> {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+
+  return { appended: appRows.length };
 }

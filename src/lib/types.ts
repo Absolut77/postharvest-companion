@@ -25,6 +25,7 @@ export type Movement = {
   elevated_update: boolean;
   units2: number;
   unit_indicator: string;
+  from_import?: boolean;
   created_at?: string;
   updated_at?: string;
 };
