@@ -706,7 +706,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           </div>
 
           {/* IN-only ancillary fields (units2, unit_indicator, stamps, SKU) */}
-          {!showBagPicker && (
+          {!showBagPicker && !showReturnBuilder && (
             <>
               <div>
                 <Label className="text-xs">Units 2</Label>
