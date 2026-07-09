@@ -140,9 +140,14 @@ function Dashboard() {
                 {dayEvents.length === 0 ? "Aucun événement" : `${dayEvents.length} événement(s)`}
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => openAddForDate(selectedDate)}>
-              <Plus className="h-4 w-4 mr-1" /> Nouveau
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => openAddForDate(selectedDate, "IN")} className="border-emerald-500 text-emerald-700 hover:bg-emerald-50">
+                <ArrowDown className="h-3.5 w-3.5 mr-1" /> IN
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openAddForDate(selectedDate, "OUT")} className="border-red-500 text-red-700 hover:bg-red-50">
+                <ArrowUp className="h-3.5 w-3.5 mr-1" /> OUT
+              </Button>
+            </div>
           </div>
           <div className="max-h-[380px] overflow-y-auto -mx-1">
             {dayEvents.length === 0 ? (
