@@ -23,7 +23,39 @@ import type { Movement, Direction } from "@/lib/types";
 import { useCurrentUser } from "@/lib/current-user";
 import { toast } from "sonner";
 import { ColoredCheckbox } from "./colored-checkbox";
-import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS } from "@/lib/bags";
+import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS, type Qualification } from "@/lib/bags";
+
+/** Nature de l'entrée (IN). */
+type EntryType = "cultivation" | "back_event" | "back_packaging" | "back_sampling" | "back_rework";
+const ENTRY_TYPES: Array<{ id: EntryType; label: string; reason: string }> = [
+  { id: "cultivation", label: "Nouvelle réception (Cultivation)", reason: "In from Cultivation" },
+  { id: "back_event", label: "Retour d'événement", reason: "Back from Event" },
+  { id: "back_packaging", label: "Retour de packaging", reason: "Back from Packaging" },
+  { id: "back_sampling", label: "Retour de sampling", reason: "Back from Sampling" },
+  { id: "back_rework", label: "Retour de rework", reason: "Back from Rework" },
+];
+const REASON_BY_ENTRY: Record<EntryType, string> = Object.fromEntries(
+  ENTRY_TYPES.map((e) => [e.id, e.reason]),
+) as Record<EntryType, string>;
+const ENTRY_BY_REASON = (r: string): EntryType => {
+  const norm = r.toLowerCase();
+  if (norm.includes("event")) return "back_event";
+  if (norm.includes("packaging")) return "back_packaging";
+  if (norm.includes("sampling")) return "back_sampling";
+  if (norm.includes("rework")) return "back_rework";
+  return "cultivation";
+};
+
+/** Nature de la sortie (OUT). */
+type OutType = "event" | "facility";
+const OUT_TYPES: Array<{ id: OutType; label: string; destination: string; hint: string }> = [
+  { id: "event", label: "Pour événement", destination: "For Event", hint: "retour attendu (inventaire temporaire)" },
+  { id: "facility", label: "Out of Facility", destination: "Out of Facility", hint: "sortie définitive" },
+];
+const DESTINATION_BY_OUT: Record<OutType, string> = { event: "For Event", facility: "Out of Facility" };
+const OUT_BY_DESTINATION = (d: string): OutType =>
+  /out\s*of\s*facility/i.test(d) ? "facility" : "event";
+
 
 type Props = {
   open: boolean;
