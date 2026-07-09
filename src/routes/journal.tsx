@@ -12,7 +12,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Search, ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, ArrowDown, ArrowUp, ArrowUpDown, X, Upload, Download, Loader2 } from "lucide-react";
+import { useRef } from "react";
+import { importFromXlsx, exportToXlsx } from "@/lib/import-export";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ColoredCheckbox } from "@/components/colored-checkbox";
@@ -46,6 +48,38 @@ function Journal() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Movement | null>(null);
   const [newDirection, setNewDirection] = useState<"IN" | "OUT">("IN");
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onImportClick = () => fileRef.current?.click();
+  const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!confirm(`Importer "${file.name}" ?\n\nCela va REMPLACER TOUS les mouvements existants par le contenu de la feuille "LOG 2026".`)) return;
+    setImporting(true);
+    try {
+      const res = await importFromXlsx(file);
+      await qc.invalidateQueries({ queryKey: ["movements"] });
+      toast.success(`Import réussi : ${res.inserted} lignes (${res.deletedPrevious} remplacées, ${res.skipped} ignorées)`);
+    } catch (err: any) {
+      toast.error(`Erreur d'import : ${err?.message ?? err}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+  const onExport = async () => {
+    setExporting(true);
+    try {
+      await exportToXlsx();
+      toast.success("Export téléchargé");
+    } catch (err: any) {
+      toast.error(`Erreur d'export : ${err?.message ?? err}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const allBatches = useMemo(
     () => Array.from(new Set(movements.map((m) => m.batch_id).filter(Boolean))).sort(),
@@ -123,7 +157,16 @@ function Journal() {
             Seule source de saisie. L'inventaire se met à jour automatiquement.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onFilePicked} />
+          <Button onClick={onImportClick} size="lg" variant="outline" disabled={importing} className="shadow">
+            {importing ? <Loader2 className="h-5 w-5 mr-1 animate-spin" /> : <Upload className="h-5 w-5 mr-1" />}
+            Import Excel
+          </Button>
+          <Button onClick={onExport} size="lg" variant="outline" disabled={exporting} className="shadow">
+            {exporting ? <Loader2 className="h-5 w-5 mr-1 animate-spin" /> : <Download className="h-5 w-5 mr-1" />}
+            Export Excel
+          </Button>
           <Button onClick={() => openNew("IN")} size="lg" className="shadow bg-emerald-600 hover:bg-emerald-700 text-white">
             <ArrowDown className="h-5 w-5 mr-1" /> IN — Entrée
           </Button>
