@@ -455,45 +455,98 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           <span className="text-xs font-normal opacity-70 ml-2">Verrouillé</span>
         </div>
 
-        {/* Sub-type selector (nature de l'événement) */}
+        {/* Sub-type selector (taxonomie officielle Log 2026) */}
         {!isEditing && (
-          <div>
-            <Label className="text-xs mb-1 block">Nature de l'événement</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {isOut
-                ? OUT_TYPES.map((t) => (
+          <div className="space-y-2">
+            <div>
+              <Label className="text-xs mb-1 block">Catégorie</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {isOut
+                  ? OUT_CATEGORIES.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setOutCat(t.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-xs border transition",
+                          outCat === t.id
+                            ? "border-red-500 bg-red-500/10 text-red-700 font-semibold"
+                            : "border-border text-muted-foreground hover:bg-accent",
+                          t.temp && outCat !== t.id && "border-dashed",
+                        )}
+                        title={t.hint}
+                      >
+                        {t.label}
+                        <span className="ml-1 text-[10px] opacity-70">· {t.hint}</span>
+                      </button>
+                    ))
+                  : IN_CATEGORIES.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setInCat(t.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-xs border transition",
+                          inCat === t.id
+                            ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-semibold"
+                            : "border-border text-muted-foreground hover:bg-accent",
+                        )}
+                        title={t.hint}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+              </div>
+            </div>
+
+            {/* Second-tier: OUT of Facility purpose */}
+            {isOut && outCat === "facility" && (
+              <div>
+                <Label className="text-xs mb-1 block">Motif</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {FACILITY_PURPOSES.map((p) => (
                     <button
-                      key={t.id}
+                      key={p.id}
                       type="button"
-                      onClick={() => setOutType(t.id)}
+                      onClick={() => setFacilityPurpose(p.id)}
                       className={cn(
                         "px-3 py-1.5 rounded-full text-xs border transition",
-                        outType === t.id
+                        facilityPurpose === p.id
                           ? "border-red-500 bg-red-500/10 text-red-700 font-semibold"
                           : "border-border text-muted-foreground hover:bg-accent",
                       )}
-                      title={t.hint}
+                      title={p.hint}
                     >
-                      {t.label}
-                      <span className="ml-1 text-[10px] opacity-70">· {t.hint}</span>
+                      {p.label}
                     </button>
-                  ))
-                : ENTRY_TYPES.map((t) => (
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Second-tier: IN Cultivation qualification */}
+            {!isOut && inCat === "cultivation" && (
+              <div>
+                <Label className="text-xs mb-1 block">Qualification (Comment #2)</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CULTIVATION_QUALIFS.map((q) => (
                     <button
-                      key={t.id}
+                      key={q}
                       type="button"
-                      onClick={() => setEntryType(t.id)}
+                      onClick={() => setCultivationQualif(q)}
                       className={cn(
                         "px-3 py-1.5 rounded-full text-xs border transition",
-                        entryType === t.id
+                        cultivationQualif === q
                           ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-semibold"
                           : "border-border text-muted-foreground hover:bg-accent",
                       )}
                     >
-                      {t.label}
+                      {q}
                     </button>
                   ))}
-            </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
