@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import ExcelJS from "exceljs";
+import JSZip from "jszip";
 import { supabase } from "@/integrations/supabase/client";
 import type { MovementInput, Movement } from "./types";
 import { listMovements } from "./movements";
@@ -184,8 +184,9 @@ export async function importFromXlsx(file: File): Promise<ImportResult> {
 }
 
 // -------- EXPORT --------
-// N'écrit AUCUNE modification sur les lignes issues du modèle : on prend une copie
-// du fichier d'origine et on ajoute uniquement les mouvements créés dans l'app.
+// Le fichier importé reste la source intacte : on modifie uniquement le XML strictement
+// nécessaire pour ajouter les nouvelles lignes à la fin de la table LOG, sans réécrire
+// le classeur avec une librairie qui pourrait casser les formules/styles/filtres existants.
 
 async function fetchTemplateBuffer(): Promise<ArrayBuffer | null> {
   const { data, error } = await supabase.storage.from(TEMPLATE_BUCKET).download(TEMPLATE_PATH);
@@ -193,9 +194,11 @@ async function fetchTemplateBuffer(): Promise<ArrayBuffer | null> {
   return await data.arrayBuffer();
 }
 
-function movementCellByField(m: Movement, field: string): string | number | boolean | null {
+type ExportCellValue = string | number | boolean | null | { kind: "date"; iso: string };
+
+function movementCellByField(m: Movement, field: string): ExportCellValue {
   switch (field) {
-    case "event_date": return m.event_date;
+    case "event_date": return { kind: "date", iso: m.event_date };
     case "initials": return m.initials;
     case "strain": return m.strain;
     case "batch_id": return m.batch_id;
@@ -216,6 +219,197 @@ function movementCellByField(m: Movement, field: string): string | number | bool
   }
 }
 
+function xmlEscape(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function attrEscape(value: string): string {
+  return xmlEscape(value).replace(/"/g, "&quot;");
+}
+
+function parseXml(xml: string): Document {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const err = doc.getElementsByTagName("parsererror")[0];
+  if (err) throw new Error("Impossible de lire la structure interne du fichier Excel.");
+  return doc;
+}
+
+function getRelationshipId(el: Element): string | null {
+  return el.getAttribute("r:id") || el.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+}
+
+function normalizePath(path: string): string {
+  const parts: string[] = [];
+  for (const part of path.replace(/^\//, "").split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.join("/");
+}
+
+function resolveTarget(sourcePath: string, target: string): string {
+  if (target.startsWith("/")) return normalizePath(target);
+  const base = sourcePath.split("/").slice(0, -1).join("/");
+  return normalizePath(`${base}/${target}`);
+}
+
+function relsPathFor(sourcePath: string): string {
+  const parts = sourcePath.split("/");
+  const file = parts.pop();
+  return `${parts.join("/")}/_rels/${file}.rels`;
+}
+
+async function zipText(zip: JSZip, path: string): Promise<string> {
+  const file = zip.file(path);
+  if (!file) throw new Error(`Fichier Excel interne introuvable: ${path}`);
+  return file.async("string");
+}
+
+async function relMap(zip: JSZip, relsPath: string): Promise<Map<string, string>> {
+  const file = zip.file(relsPath);
+  const map = new Map<string, string>();
+  if (!file) return map;
+  const doc = parseXml(await file.async("string"));
+  Array.from(doc.getElementsByTagName("Relationship")).forEach((rel) => {
+    const id = rel.getAttribute("Id");
+    const target = rel.getAttribute("Target");
+    if (id && target) map.set(id, target);
+  });
+  return map;
+}
+
+async function worksheetPathFor(zip: JSZip, wantedSheetName: string): Promise<string> {
+  const workbookXml = await zipText(zip, "xl/workbook.xml");
+  const rels = await relMap(zip, "xl/_rels/workbook.xml.rels");
+  const doc = parseXml(workbookXml);
+  const sheets = Array.from(doc.getElementsByTagName("sheet"));
+  const sheet = sheets.find((s) => s.getAttribute("name") === wantedSheetName)
+    ?? sheets.find((s) => normalize(s.getAttribute("name") ?? "") === normalize(wantedSheetName));
+  const id = sheet ? getRelationshipId(sheet) : null;
+  const target = id ? rels.get(id) : null;
+  if (!target) throw new Error(`Impossible de localiser la feuille ${wantedSheetName} dans le fichier Excel.`);
+  return resolveTarget("xl/workbook.xml", target);
+}
+
+async function tablePathForWorksheet(zip: JSZip, sheetPath: string, sheetXml: string): Promise<string | null> {
+  const tablePart = /<tablePart\b[^>]*(?:r:id|id)="([^"]+)"[^>]*\/>/.exec(sheetXml);
+  const relId = tablePart?.[1];
+  if (!relId) return null;
+  const rels = await relMap(zip, relsPathFor(sheetPath));
+  const target = rels.get(relId);
+  return target ? resolveTarget(sheetPath, target) : null;
+}
+
+function rowNumFromRef(ref: string): number {
+  const match = /\d+$/.exec(ref);
+  return match ? Number(match[0]) : 1;
+}
+
+function maxRowInSheetXml(sheetXml: string): number {
+  let max = 1;
+  for (const match of sheetXml.matchAll(/<row\b[^>]*\br="(\d+)"[^>]*>/g)) {
+    max = Math.max(max, Number(match[1]));
+  }
+  for (const match of sheetXml.matchAll(/<c\b[^>]*\br="[A-Z]+(\d+)"[^>]*>/g)) {
+    max = Math.max(max, Number(match[1]));
+  }
+  return max;
+}
+
+function getTableRef(tableXml: string | null): string | null {
+  if (!tableXml) return null;
+  return /<table\b[^>]*\bref="([^"]+)"/.exec(tableXml)?.[1] ?? null;
+}
+
+function extendRefRows(ref: string, endRow: number): string {
+  const range = XLSX.utils.decode_range(ref);
+  range.e.r = Math.max(range.e.r, endRow - 1);
+  return XLSX.utils.encode_range(range);
+}
+
+function getRowXml(sheetXml: string, rowNumber: number): string | null {
+  const escaped = String(rowNumber).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`<row\\b[^>]*\\br="${escaped}"[^>]*>[\\s\\S]*?<\\/row>`).exec(sheetXml)?.[0] ?? null;
+}
+
+function countCells(rowXml: string): number {
+  return Array.from(rowXml.matchAll(/<c\b/g)).length;
+}
+
+function findReferenceStyles(sheetXml: string, maxRow: number): Record<string, string> {
+  let best: string | null = null;
+  let bestCount = 0;
+  for (let row = maxRow; row >= 2; row--) {
+    const xml = getRowXml(sheetXml, row);
+    if (!xml) continue;
+    const count = countCells(xml);
+    const hasDateCell = /<c\b[^>]*\br="A\d+"/.test(xml);
+    if (hasDateCell && count >= 8) { best = xml; break; }
+    if (count > bestCount) { best = xml; bestCount = count; }
+  }
+  best ||= getRowXml(sheetXml, 2);
+  const styles: Record<string, string> = {};
+  if (!best) return styles;
+  for (const match of best.matchAll(/<c\b([^>]*)\br="([A-Z]+)\d+"([^>]*)>/g)) {
+    const attrs = `${match[1]} ${match[3]}`;
+    const style = /\bs="(\d+)"/.exec(attrs)?.[1];
+    if (style) styles[match[2]] = style;
+  }
+  return styles;
+}
+
+function isoDateToExcelSerial(iso: string): number | null {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!parts) return null;
+  const utc = Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
+  if (!Number.isFinite(utc)) return null;
+  return Math.round(utc / 86400000 + 25569);
+}
+
+function cellXml(ref: string, value: ExportCellValue, style?: string): string {
+  if (value == null || value === "") return "";
+  const styleAttr = style ? ` s="${attrEscape(style)}"` : "";
+  if (typeof value === "object" && value.kind === "date") {
+    const serial = isoDateToExcelSerial(value.iso);
+    return serial == null ? "" : `<c r="${ref}"${styleAttr}><v>${serial}</v></c>`;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `<c r="${ref}"${styleAttr}><v>${value}</v></c>`;
+  }
+  if (typeof value === "boolean") {
+    return `<c r="${ref}" t="b"${styleAttr}><v>${value ? 1 : 0}</v></c>`;
+  }
+  return `<c r="${ref}" t="inlineStr"${styleAttr}><is><t>${xmlEscape(String(value))}</t></is></c>`;
+}
+
+function rowXml(rowNumber: number, values: ExportCellValue[], colCount: number, styles: Record<string, string>): string {
+  const cells: string[] = [];
+  for (let index = 0; index < colCount; index++) {
+    const col = XLSX.utils.encode_col(index);
+    cells.push(cellXml(`${col}${rowNumber}`, values[index] ?? null, styles[col]));
+  }
+  return `<row r="${rowNumber}" spans="1:${colCount}">${cells.join("")}</row>`;
+}
+
+function appendRowsToSheetXml(sheetXml: string, rowsXml: string): string {
+  if (/<sheetData\s*\/>/.test(sheetXml)) return sheetXml.replace(/<sheetData\s*\/>/, `<sheetData>${rowsXml}</sheetData>`);
+  return sheetXml.replace(/<\/sheetData>/, `${rowsXml}</sheetData>`);
+}
+
+function updateSheetDimension(sheetXml: string, endRow: number): string {
+  return sheetXml.replace(/(<dimension\b[^>]*\bref=")([^"]+)("[^>]*\/>)/, (_m, a, ref, b) => `${a}${extendRefRows(ref, endRow)}${b}`);
+}
+
+function updateTableRef(tableXml: string, nextRef: string): string {
+  return tableXml
+    .replace(/(<table\b[^>]*\bref=")([^"]+)(")/, (_m, a, _ref, b) => `${a}${nextRef}${b}`)
+    .replace(/(<autoFilter\b[^>]*\bref=")([^"]+)(")/, (_m, a, _ref, b) => `${a}${nextRef}${b}`);
+}
+
 export async function exportToXlsx(): Promise<{ appended: number }> {
   const templateBuf = await fetchTemplateBuffer();
   if (!templateBuf) {
@@ -232,53 +426,54 @@ export async function exportToXlsx(): Promise<{ appended: number }> {
         : a.event_date.localeCompare(b.event_date),
     );
 
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(templateBuf);
-
-  let ws = LOG_SHEET_CANDIDATES.map((n) => wb.getWorksheet(n)).find(Boolean) as ExcelJS.Worksheet | undefined;
-  if (!ws) {
-    for (const candidate of wb.worksheets) {
-      const first = candidate.getRow(1);
-      const headers: string[] = [];
-      first.eachCell({ includeEmpty: true }, (c) => headers.push(String(c.value ?? "")));
-      if (headers.some((h) => normalize(h) === "date")) { ws = candidate; break; }
-    }
-  }
-  if (!ws) throw new Error("Impossible de trouver la feuille LOG 2026 dans le modèle.");
-
-  const headerRow = ws.getRow(1);
-  const headerCells: string[] = [];
-  headerRow.eachCell({ includeEmpty: true }, (c) => headerCells.push(String(c.value ?? "")));
-  const map = buildHeaderMap(headerCells);
-  const colCount = headerCells.length || 17;
-
-  // Cherche la première ligne vide APRÈS toutes les données existantes du modèle,
-  // pour ajouter à la suite sans rien écraser.
-  let appendAt = Math.max(ws.actualRowCount, 1) + 1;
-  // Précaution : si la dernière ligne réelle est vide, remonte pour compacter
-  while (appendAt > 2) {
-    const prev = ws.getRow(appendAt - 1);
-    const empty = prev.actualCellCount === 0;
-    if (!empty) break;
-    appendAt--;
-  }
-
-  for (const m of appRows) {
-    const rowArr: (string | number | boolean | null)[] = new Array(colCount).fill(null);
-    for (const [field, colIdx] of Object.entries(map)) {
-      rowArr[colIdx] = movementCellByField(m, field);
-    }
-    const row = ws.getRow(appendAt);
-    rowArr.forEach((v, i) => {
-      row.getCell(i + 1).value = v as ExcelJS.CellValue;
+  const parsed = XLSX.read(templateBuf, { type: "array", cellDates: true });
+  let sheetName = LOG_SHEET_CANDIDATES.find((n) => parsed.SheetNames.includes(n));
+  if (!sheetName) {
+    sheetName = parsed.SheetNames.find((name) => {
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(parsed.Sheets[name], { header: 1, blankrows: false });
+      return rows.length > 0 && (rows[0] as unknown[]).some((h) => normalize(String(h)) === "date");
     });
-    row.commit();
-    appendAt++;
+  }
+  if (!sheetName) throw new Error("Impossible de trouver la feuille LOG 2026 dans le modèle.");
+
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(parsed.Sheets[sheetName], { header: 1, blankrows: false, defval: null });
+  const headerCells = (rows[0] ?? []) as unknown[];
+  const map = buildHeaderMap(headerCells);
+  const colCount = Math.max(headerCells.length, ...Object.values(map).map((i) => i + 1), 17);
+
+  const zip = await JSZip.loadAsync(templateBuf);
+  const sheetPath = await worksheetPathFor(zip, sheetName);
+  let sheetXml = await zipText(zip, sheetPath);
+  const tablePath = await tablePathForWorksheet(zip, sheetPath, sheetXml);
+  let tableXml = tablePath ? await zipText(zip, tablePath) : null;
+  const tableRef = getTableRef(tableXml);
+  const tableEndRow = tableRef ? rowNumFromRef(tableRef.split(":").pop() ?? tableRef) : 1;
+  const sheetEndRow = maxRowInSheetXml(sheetXml);
+  const appendAt = Math.max(tableEndRow, sheetEndRow, 1) + 1;
+  const newEndRow = appendAt + appRows.length - 1;
+  const styles = findReferenceStyles(sheetXml, Math.max(tableEndRow, sheetEndRow));
+
+  const newRowsXml = appRows.map((m, offset) => {
+    const rowValues: ExportCellValue[] = new Array(colCount).fill(null);
+    for (const [field, colIdx] of Object.entries(map)) rowValues[colIdx] = movementCellByField(m, field);
+    return rowXml(appendAt + offset, rowValues, colCount, styles);
+  }).join("");
+
+  if (newRowsXml) {
+    sheetXml = appendRowsToSheetXml(sheetXml, newRowsXml);
+    sheetXml = updateSheetDimension(sheetXml, newEndRow);
+    zip.file(sheetPath, sheetXml);
+
+    if (tablePath && tableXml && tableRef) {
+      const nextTableRef = extendRefRows(tableRef, newEndRow);
+      tableXml = updateTableRef(tableXml, nextTableRef);
+      zip.file(tablePath, tableXml);
+    }
   }
 
-  const out = await wb.xlsx.writeBuffer();
-  const blob = new Blob([out], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  const blob = await zip.generateAsync({
+    type: "blob",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const stamp = new Date().toISOString().slice(0, 10);
   const url = URL.createObjectURL(blob);
