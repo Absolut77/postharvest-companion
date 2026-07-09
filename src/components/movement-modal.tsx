@@ -616,6 +616,27 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       let unit_indicator = form.unit_indicator;
       let additional_comments = form.additional_comments;
 
+      // === IN Cultivation multi-qualifs: one INSERT per row ===
+      if (!editing && isIn && inCat === "cultivation") {
+        const rows = cultValidRows;
+        if (rows.length === 0) throw new Error("Ajoute au moins une qualification avec une quantité");
+        const cfg = IN_CATEGORIES.find((c) => c.id === "cultivation")!;
+        const results = [];
+        for (const r of rows) {
+          const payload = {
+            ...form,
+            reason: cfg.reason,
+            destination: "In",
+            comment2: r.qualif,
+            product_format: formatForCultivationQualif(r.qualif),
+            quantity_g: +(Number(r.grams) || 0).toFixed(2),
+            units: Number(r.units) || 0,
+          };
+          results.push(await insertMovement(payload));
+        }
+        return { multi: true, count: results.length };
+      }
+
       if (!editing) {
         if (isIn) {
           const cfg = IN_CATEGORIES.find((c) => c.id === inCat)!;
@@ -642,9 +663,10 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       if (editing) return updateMovement(editing.id, payload);
       return insertMovement(payload);
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ["movements"] });
-      toast.success(editing ? "Ligne mise à jour" : "Événement ajouté");
+      if (res?.multi) toast.success(`${res.count} ligne${res.count > 1 ? "s" : ""} ajoutée${res.count > 1 ? "s" : ""}`);
+      else toast.success(editing ? "Ligne mise à jour" : "Événement ajouté");
       onOpenChange(false);
     },
     onError: (e: any) => toast.error(e.message ?? "Erreur"),
