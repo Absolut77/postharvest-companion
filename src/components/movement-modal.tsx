@@ -24,37 +24,13 @@ import { useCurrentUser } from "@/lib/current-user";
 import { toast } from "sonner";
 import { ColoredCheckbox } from "./colored-checkbox";
 import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS, type Qualification } from "@/lib/bags";
-
-/** Nature de l'entrée (IN). */
-type EntryType = "cultivation" | "back_event" | "back_packaging" | "back_sampling" | "back_rework";
-const ENTRY_TYPES: Array<{ id: EntryType; label: string; reason: string }> = [
-  { id: "cultivation", label: "Nouvelle réception (Cultivation)", reason: "In from Cultivation" },
-  { id: "back_event", label: "Retour d'événement", reason: "Back from Event" },
-  { id: "back_packaging", label: "Retour de packaging", reason: "Back from Packaging" },
-  { id: "back_sampling", label: "Retour de sampling", reason: "Back from Sampling" },
-  { id: "back_rework", label: "Retour de rework", reason: "Back from Rework" },
-];
-const REASON_BY_ENTRY: Record<EntryType, string> = Object.fromEntries(
-  ENTRY_TYPES.map((e) => [e.id, e.reason]),
-) as Record<EntryType, string>;
-const ENTRY_BY_REASON = (r: string): EntryType => {
-  const norm = r.toLowerCase();
-  if (norm.includes("event")) return "back_event";
-  if (norm.includes("packaging")) return "back_packaging";
-  if (norm.includes("sampling")) return "back_sampling";
-  if (norm.includes("rework")) return "back_rework";
-  return "cultivation";
-};
-
-/** Nature de la sortie (OUT). */
-type OutType = "event" | "facility";
-const OUT_TYPES: Array<{ id: OutType; label: string; destination: string; hint: string }> = [
-  { id: "event", label: "Pour événement", destination: "For Event", hint: "retour attendu (inventaire temporaire)" },
-  { id: "facility", label: "Out of Facility", destination: "Out of Facility", hint: "sortie définitive" },
-];
-const DESTINATION_BY_OUT: Record<OutType, string> = { event: "For Event", facility: "Out of Facility" };
-const OUT_BY_DESTINATION = (d: string): OutType =>
-  /out\s*of\s*facility/i.test(d) ? "facility" : "event";
+import {
+  OUT_CATEGORIES, FACILITY_PURPOSES, IN_CATEGORIES,
+  CULTIVATION_QUALIFS, PROVINCES,
+  detectOutCategory, detectFacilityPurpose, detectInCategory,
+  outInputMode, inInputMode, formatForCultivationQualif,
+  type OutCategory, type FacilityPurpose, type InCategory,
+} from "@/lib/movement-taxonomy";
 
 
 type Props = {
@@ -226,10 +202,11 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     });
   };
 
-  // ============= OUT bag picker =============
+  // ============= OUT bag picker (state) =============
   const isOut = form.direction === "OUT";
   const isEditing = !!editing;
-  const showBagPicker = isOut && !isEditing;
+  // NB: showBagPicker is derived later from inputMode; here we still need bag data for any OUT sub-type.
+  const needsBagPickerData = isOut && !isEditing;
 
   const [selectedBagKeys, setSelectedBagKeys] = useState<Set<string>>(new Set());
 
@@ -237,12 +214,12 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
   useEffect(() => { setSelectedBagKeys(new Set()); }, [form.batch_id, open]);
 
   const availableBags = useMemo<AvailableBag[]>(
-    () => (showBagPicker && form.batch_id ? computeAvailableBags(form.batch_id, movements) : []),
-    [showBagPicker, form.batch_id, movements],
+    () => (needsBagPickerData && form.batch_id ? computeAvailableBags(form.batch_id, movements) : []),
+    [needsBagPickerData, form.batch_id, movements],
   );
   const netByQualif = useMemo(
-    () => (showBagPicker && form.batch_id ? computeNetByQualification(form.batch_id, movements) : new Map()),
-    [showBagPicker, form.batch_id, movements],
+    () => (needsBagPickerData && form.batch_id ? computeNetByQualification(form.batch_id, movements) : new Map()),
+    [needsBagPickerData, form.batch_id, movements],
   );
 
   const bagsByQualif = useMemo(() => {
@@ -261,9 +238,10 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
   const selectedTotalG = selectedBags.reduce((s, b) => s + b.grams, 0);
   const selectedUnits = selectedBags.length;
 
-  // Sync form fields from selected bags
+  // Sync form fields from selected bags (only when the picker actually has a selection)
   useEffect(() => {
-    if (!showBagPicker) return;
+    if (!needsBagPickerData) return;
+    if (selectedBagKeys.size === 0) return;
     const qualifs = new Set(selectedBags.map((b) => b.qualification));
     const singleQualif = qualifs.size === 1 ? Array.from(qualifs)[0] : "";
     setForm((f) => ({
@@ -274,7 +252,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       comment2: singleQualif || f.comment2,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showBagPicker, selectedTotalG, selectedUnits]);
+  }, [needsBagPickerData, selectedTotalG, selectedUnits]);
 
   const toggleBag = (key: string) => {
     setSelectedBagKeys((prev) => {
@@ -284,12 +262,35 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     });
   };
 
-  // ============= IN entry-type + OUT out-type =============
+  // ============= Sub-type taxonomy =============
   const isIn = form.direction === "IN";
-  const [entryType, setEntryType] = useState<EntryType>("cultivation");
-  const [outType, setOutType] = useState<OutType>("event");
-  const isReturn = isIn && entryType !== "cultivation";
-  const showReturnBuilder = isReturn && !isEditing;
+
+  // IN state
+  const [inCat, setInCat] = useState<InCategory>("cultivation");
+  const [cultivationQualif, setCultivationQualif] = useState<string>("");
+
+  // OUT state
+  const [outCat, setOutCat] = useState<OutCategory>("facility");
+  const [facilityPurpose, setFacilityPurpose] = useState<FacilityPurpose>("b2b_sale");
+
+  // Shared conditional fields
+  const [province, setProvince] = useState<string>("");
+  const [packagedBatch, setPackagedBatch] = useState<string>("");
+  const [recipient, setRecipient] = useState<string>("");
+
+  // Derive input mode
+  const inputMode = isEditing
+    ? "manualEntry"
+    : isIn
+      ? inInputMode(inCat)
+      : outInputMode(outCat, facilityPurpose);
+
+  const showBagPicker = !isEditing && inputMode === "bagPicker";
+  const showReturnBuilder = !isEditing && inputMode === "bagBuilder";
+  const showCultivationEntry = !isEditing && inputMode === "cultivationEntry";
+  const showPackagedShipment = !isEditing && inputMode === "packagedShipment";
+  const showManualSample = !isEditing && inputMode === "manualSample";
+  const showManualEntry = isEditing || inputMode === "manualEntry";
 
   // Return bag builder rows
   type ReturnRow = { id: string; qualification: Qualification | ""; grams: number };
@@ -299,26 +300,41 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
     setReturnBags((r) => r.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   const removeReturnBag = (id: string) => setReturnBags((r) => r.filter((b) => b.id !== id));
 
-  // Reset entryType/outType/returnBags when modal opens or editing changes
+  // Init when modal opens or editing changes
   useEffect(() => {
     if (!open) return;
     if (editing) {
-      if (editing.direction === "IN") setEntryType(ENTRY_BY_REASON(editing.reason || ""));
-      else setOutType(OUT_BY_DESTINATION(editing.destination || editing.reason || ""));
+      if (editing.direction === "IN") {
+        const c = detectInCategory(editing.reason || "");
+        setInCat(c);
+        if (c === "cultivation") setCultivationQualif(editing.comment2 || "");
+      } else {
+        const c = detectOutCategory(editing.reason || "");
+        setOutCat(c);
+        if (c === "facility") setFacilityPurpose(detectFacilityPurpose(editing.comment2 || ""));
+      }
+      setProvince(editing.unit_indicator || "");
+      setPackagedBatch(editing.comment2 || "");
+      setRecipient(editing.additional_comments || "");
       setReturnBags([]);
+      setCultivationQualif(editing.comment2 || "");
     } else {
-      setEntryType("cultivation");
-      setOutType("event");
+      setInCat("cultivation");
+      setOutCat("facility");
+      setFacilityPurpose("b2b_sale");
+      setCultivationQualif("");
+      setProvince("");
+      setPackagedBatch("");
+      setRecipient("");
       setReturnBags([]);
     }
   }, [open, editing]);
 
-  // When user switches to a return type, seed one empty row
+  // Seed one empty row when entering bag builder mode
   useEffect(() => {
     if (showReturnBuilder && returnBags.length === 0) {
       setReturnBags([{ id: crypto.randomUUID(), qualification: "", grams: 0 }]);
     }
-    if (!showReturnBuilder) return;
   }, [showReturnBuilder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const returnTotalG = returnBags.reduce((s, b) => s + (Number(b.grams) || 0), 0);
@@ -333,27 +349,71 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       ...f,
       quantity_g: +returnTotalG.toFixed(2),
       units: returnUnits,
-      product_format: f.product_format || "Bulk",
+      product_format: f.product_format || (isIn ? IN_CATEGORIES.find((c) => c.id === inCat)?.defaultFormat ?? "Bulk" : "Bulk"),
       comment2: singleQualif || f.comment2,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showReturnBuilder, returnTotalG, returnUnits]);
 
+  // Auto-set product_format from sub-type
+  useEffect(() => {
+    if (isEditing) return;
+    if (isIn) {
+      const cfg = IN_CATEGORIES.find((c) => c.id === inCat);
+      if (cfg) setForm((f) => ({ ...f, product_format: cfg.defaultFormat }));
+    } else if (outCat === "facility") {
+      const cfg = FACILITY_PURPOSES.find((p) => p.id === facilityPurpose);
+      if (cfg) setForm((f) => ({ ...f, product_format: cfg.defaultFormat }));
+    } else {
+      const cfg = OUT_CATEGORIES.find((c) => c.id === outCat);
+      if (cfg && cfg.id === "sampling") setForm((f) => ({ ...f, product_format: "Sample" }));
+      else setForm((f) => ({ ...f, product_format: "Bulk" }));
+    }
+  }, [isIn, inCat, outCat, facilityPurpose, isEditing]);
+
+  // Auto-set comment2 from cultivation qualif
+  useEffect(() => {
+    if (isEditing) return;
+    if (isIn && inCat === "cultivation" && cultivationQualif) {
+      setForm((f) => ({
+        ...f,
+        comment2: cultivationQualif,
+        product_format: formatForCultivationQualif(cultivationQualif),
+      }));
+    }
+  }, [cultivationQualif, isIn, inCat, isEditing]);
+
   const mutation = useMutation({
     mutationFn: async () => {
-      // Normalize reason / destination based on direction + sub-type
       let reason = form.reason;
       let destination = form.destination;
-      if (form.direction === "IN" && !editing) {
-        reason = REASON_BY_ENTRY[entryType];
-        if (entryType === "cultivation" && !destination) destination = "Cultivation";
-      } else if (form.direction === "OUT" && !editing) {
-        destination = DESTINATION_BY_OUT[outType];
-        reason = destination;
-      } else {
-        reason = form.destination || form.reason;
+      let comment2 = form.comment2;
+      let unit_indicator = form.unit_indicator;
+      let additional_comments = form.additional_comments;
+
+      if (!editing) {
+        if (isIn) {
+          const cfg = IN_CATEGORIES.find((c) => c.id === inCat)!;
+          reason = cfg.reason;
+          destination = "In";
+          if (cfg.needsQualif && cultivationQualif) comment2 = cultivationQualif;
+          if (cfg.needsPackagedBatch && packagedBatch) comment2 = packagedBatch;
+          if (cfg.needsRecipient && recipient) additional_comments = additional_comments || recipient;
+        } else {
+          const outCfg = OUT_CATEGORIES.find((c) => c.id === outCat)!;
+          reason = outCfg.reason;
+          destination = "Out";
+          if (outCat === "facility") {
+            const pCfg = FACILITY_PURPOSES.find((p) => p.id === facilityPurpose)!;
+            if (pCfg.comment2) comment2 = pCfg.comment2;
+            if (pCfg.needsProvince && province) unit_indicator = province;
+            if (pCfg.needsRecipient && recipient) additional_comments = additional_comments || recipient;
+          }
+          if (outCat === "packaging" && packagedBatch) comment2 = packagedBatch;
+        }
       }
-      const payload = { ...form, reason, destination };
+
+      const payload = { ...form, reason, destination, comment2, unit_indicator, additional_comments };
       if (editing) return updateMovement(editing.id, payload);
       return insertMovement(payload);
     },
@@ -395,47 +455,154 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           <span className="text-xs font-normal opacity-70 ml-2">Verrouillé</span>
         </div>
 
-        {/* Sub-type selector (nature de l'événement) */}
+        {/* Sub-type selector (taxonomie officielle Log 2026) */}
         {!isEditing && (
-          <div>
-            <Label className="text-xs mb-1 block">Nature de l'événement</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {isOut
-                ? OUT_TYPES.map((t) => (
+          <div className="space-y-2">
+            <div>
+              <Label className="text-xs mb-1 block">Catégorie</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {isOut
+                  ? OUT_CATEGORIES.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setOutCat(t.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-xs border transition",
+                          outCat === t.id
+                            ? "border-red-500 bg-red-500/10 text-red-700 font-semibold"
+                            : "border-border text-muted-foreground hover:bg-accent",
+                          t.temp && outCat !== t.id && "border-dashed",
+                        )}
+                        title={t.hint}
+                      >
+                        {t.label}
+                        <span className="ml-1 text-[10px] opacity-70">· {t.hint}</span>
+                      </button>
+                    ))
+                  : IN_CATEGORIES.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setInCat(t.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-xs border transition",
+                          inCat === t.id
+                            ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-semibold"
+                            : "border-border text-muted-foreground hover:bg-accent",
+                        )}
+                        title={t.hint}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+              </div>
+            </div>
+
+            {/* Second-tier: OUT of Facility purpose */}
+            {isOut && outCat === "facility" && (
+              <div>
+                <Label className="text-xs mb-1 block">Motif</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {FACILITY_PURPOSES.map((p) => (
                     <button
-                      key={t.id}
+                      key={p.id}
                       type="button"
-                      onClick={() => setOutType(t.id)}
+                      onClick={() => setFacilityPurpose(p.id)}
                       className={cn(
                         "px-3 py-1.5 rounded-full text-xs border transition",
-                        outType === t.id
+                        facilityPurpose === p.id
                           ? "border-red-500 bg-red-500/10 text-red-700 font-semibold"
                           : "border-border text-muted-foreground hover:bg-accent",
                       )}
-                      title={t.hint}
+                      title={p.hint}
                     >
-                      {t.label}
-                      <span className="ml-1 text-[10px] opacity-70">· {t.hint}</span>
+                      {p.label}
                     </button>
-                  ))
-                : ENTRY_TYPES.map((t) => (
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Second-tier: IN Cultivation qualification */}
+            {!isOut && inCat === "cultivation" && (
+              <div>
+                <Label className="text-xs mb-1 block">Qualification (Comment #2)</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CULTIVATION_QUALIFS.map((q) => (
                     <button
-                      key={t.id}
+                      key={q}
                       type="button"
-                      onClick={() => setEntryType(t.id)}
+                      onClick={() => setCultivationQualif(q)}
                       className={cn(
                         "px-3 py-1.5 rounded-full text-xs border transition",
-                        entryType === t.id
+                        cultivationQualif === q
                           ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-semibold"
                           : "border-border text-muted-foreground hover:bg-accent",
                       )}
                     >
-                      {t.label}
+                      {q}
                     </button>
                   ))}
-            </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Conditional fields driven by sub-type (province / packaged batch / recipient) */}
+        {!isEditing && (() => {
+          const showProvince =
+            (isOut && outCat === "facility" && (facilityPurpose === "messager" || facilityPurpose === "b2b_sale"));
+          const showPackagedBatch =
+            (isOut && outCat === "packaging") ||
+            (!isOut && (inCat === "back_pack" || inCat === "standby"));
+          const showRecipient =
+            (isOut && outCat === "facility" && facilityPurpose !== "other" && facilityPurpose !== "messager") ||
+            (!isOut && inCat === "external");
+          if (!showProvince && !showPackagedBatch && !showRecipient) return null;
+          return (
+            <div className="grid grid-cols-3 gap-2 rounded-md border bg-muted/30 p-2">
+              {showProvince && (
+                <div>
+                  <Label className="text-[10px] uppercase text-muted-foreground">Province / Distributeur</Label>
+                  <Select value={province || "__none__"} onValueChange={(v) => setProvince(v === "__none__" ? "" : v)}>
+                    <SelectTrigger className="h-8"><SelectValue placeholder="Sélectionner…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">—</SelectItem>
+                      {PROVINCES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {showPackagedBatch && (
+                <div>
+                  <Label className="text-[10px] uppercase text-muted-foreground">
+                    {isOut ? "Batch packagé cible" : inCat === "standby" ? "Batch packagé produit" : "Batch packagé source"}
+                  </Label>
+                  <Input
+                    value={packagedBatch}
+                    onChange={(e) => setPackagedBatch(e.target.value)}
+                    placeholder="ex : ONO-0120-03"
+                    className="h-8 font-mono text-xs"
+                  />
+                </div>
+              )}
+              {showRecipient && (
+                <div>
+                  <Label className="text-[10px] uppercase text-muted-foreground">Destinataire</Label>
+                  <Input
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    placeholder={isOut ? "PPB Labs, Nuance MJ…" : "Client externe…"}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
 
         <div className="grid grid-cols-2 gap-3">
           <div>
