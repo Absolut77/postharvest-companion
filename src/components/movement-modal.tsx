@@ -554,8 +554,67 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
             </div>
           )}
 
-          {/* ============= IN: product type / format / qty / units / destination ============= */}
-          {!showBagPicker && (
+          {/* ============= IN: Return bag builder ============= */}
+          {showReturnBuilder && (
+            <div className="col-span-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs flex items-center gap-1">
+                  <PackageOpen className="h-3.5 w-3.5" /> Sacs retournés
+                </Label>
+                <div className="text-xs text-muted-foreground">
+                  {returnUnits} sac{returnUnits > 1 ? "s" : ""} · <span className="font-mono font-semibold text-foreground">{returnTotalG.toFixed(2)} g</span>
+                </div>
+              </div>
+              <div className="rounded-md border divide-y">
+                {returnBags.map((b, i) => (
+                  <div key={b.id} className="flex items-center gap-2 p-2">
+                    <span className="text-[10px] text-muted-foreground font-mono w-6">#{i + 1}</span>
+                    <Select
+                      value={b.qualification || "__none__"}
+                      onValueChange={(v) => updateReturnBag(b.id, { qualification: v === "__none__" ? "" : (v as Qualification) })}
+                    >
+                      <SelectTrigger className="h-8 flex-1 min-w-[180px]">
+                        <SelectValue placeholder="Qualification…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {QUALIFICATIONS.map((q) => (
+                          <SelectItem key={q} value={q}>{q}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={b.grams || ""}
+                      placeholder="grammes"
+                      onChange={(e) => updateReturnBag(b.id, { grams: parseFloat(e.target.value) || 0 })}
+                      className="h-8 w-28 font-mono"
+                    />
+                    <span className="text-xs text-muted-foreground">g</span>
+                    <button
+                      type="button"
+                      onClick={() => removeReturnBag(b.id)}
+                      className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-red-600"
+                      title="Retirer ce sac"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={addReturnBag}>
+                <Plus className="h-4 w-4 mr-1" /> Ajouter un sac
+              </Button>
+              <div className="text-[11px] text-muted-foreground">
+                Quantité et Units se calculent à partir des sacs. La qualification renseigne automatiquement Comment #2 si tous les sacs partagent la même.
+              </div>
+            </div>
+          )}
+
+          {/* ============= IN Cultivation: classic form ============= */}
+          {!showBagPicker && !showReturnBuilder && (
             <>
               <div>
                 <Label className="text-xs">Product Type</Label>
@@ -605,7 +664,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
               </div>
 
               <div className="col-span-2">
-                <Label className="text-xs">Destination / Raison</Label>
+                <Label className="text-xs">Destination / Raison (facultatif)</Label>
                 <ComboCreate
                   value={form.destination}
                   onChange={(v) => set("destination", v)}
