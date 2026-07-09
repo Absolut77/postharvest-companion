@@ -196,6 +196,7 @@ function Dashboard() {
         editing={null}
         movements={movements}
         defaultDate={prefillDate ?? undefined}
+        prefill={{ direction: newDirection }}
       />
     </div>
   );
