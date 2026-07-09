@@ -123,9 +123,14 @@ function Journal() {
             Seule source de saisie. L'inventaire se met à jour automatiquement.
           </p>
         </div>
-        <Button onClick={openNew} size="lg" className="shadow">
-          <Plus className="h-5 w-5 mr-1" /> Ajouter un événement
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => openNew("IN")} size="lg" className="shadow bg-emerald-600 hover:bg-emerald-700 text-white">
+            <ArrowDown className="h-5 w-5 mr-1" /> IN — Entrée
+          </Button>
+          <Button onClick={() => openNew("OUT")} size="lg" className="shadow bg-red-600 hover:bg-red-700 text-white">
+            <ArrowUp className="h-5 w-5 mr-1" /> OUT — Sortie
+          </Button>
+        </div>
       </div>
 
       <Card className="p-3 flex flex-wrap items-end gap-3">
