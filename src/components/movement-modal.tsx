@@ -755,29 +755,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
               </div>
             )}
 
-            {/* Second-tier: IN Cultivation qualification */}
-            {!isOut && inCat === "cultivation" && (
-              <div>
-                <Label className="text-xs mb-1 block">Qualification (Comment #2)</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {CULTIVATION_QUALIFS.map((q) => (
-                    <button
-                      key={q}
-                      type="button"
-                      onClick={() => setCultivationQualif(q)}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-xs border transition",
-                        cultivationQualif === q
-                          ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 font-semibold"
-                          : "border-border text-muted-foreground hover:bg-accent",
-                      )}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Note: pour Cultivation, la qualification (Comment #2) est saisie dans le tableau ci-dessous */}
           </div>
         )}
 
