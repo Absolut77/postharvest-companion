@@ -251,8 +251,7 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
       return next;
     });
   };
-
-
+  const mutation = useMutation({
     mutationFn: async () => {
       const payload = { ...form, reason: form.destination || form.reason };
       if (editing) return updateMovement(editing.id, payload);
