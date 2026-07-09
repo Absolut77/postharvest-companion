@@ -281,6 +281,7 @@ function Journal() {
         onOpenChange={setModalOpen}
         editing={editing}
         movements={movements}
+        prefill={editing ? undefined : { direction: newDirection }}
       />
     </div>
   );
