@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
-import { Check, ChevronsUpDown, Plus, ArrowDown, ArrowUp, X } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, ArrowDown, ArrowUp, X, PackageOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { insertMovement, updateMovement } from "@/lib/movements";
@@ -23,6 +23,7 @@ import type { Movement, Direction } from "@/lib/types";
 import { useCurrentUser } from "@/lib/current-user";
 import { toast } from "sonner";
 import { ColoredCheckbox } from "./colored-checkbox";
+import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS } from "@/lib/bags";
 
 type Props = {
   open: boolean;
