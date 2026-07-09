@@ -45,6 +45,7 @@ function Journal() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Movement | null>(null);
+  const [newDirection, setNewDirection] = useState<"IN" | "OUT">("IN");
 
   const allBatches = useMemo(
     () => Array.from(new Set(movements.map((m) => m.batch_id).filter(Boolean))).sort(),
