@@ -23,7 +23,7 @@ import type { Movement, Direction } from "@/lib/types";
 import { useCurrentUser } from "@/lib/current-user";
 import { toast } from "sonner";
 import { ColoredCheckbox } from "./colored-checkbox";
-import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS, type Qualification } from "@/lib/bags";
+import { computeAvailableBags, computeNetByQualification, type AvailableBag, QUALIFICATIONS, type Qualification, bagSizeFor } from "@/lib/bags";
 import {
   OUT_CATEGORIES, FACILITY_PURPOSES, IN_CATEGORIES,
   CULTIVATION_QUALIFS, PROVINCES,
