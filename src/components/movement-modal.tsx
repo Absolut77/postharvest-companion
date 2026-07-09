@@ -550,6 +550,60 @@ export function MovementModal({ open, onOpenChange, editing, movements, defaultD
           </div>
         )}
 
+        {/* Conditional fields driven by sub-type (province / packaged batch / recipient) */}
+        {!isEditing && (() => {
+          const showProvince =
+            (isOut && outCat === "facility" && (facilityPurpose === "messager" || facilityPurpose === "b2b_sale"));
+          const showPackagedBatch =
+            (isOut && outCat === "packaging") ||
+            (!isOut && (inCat === "back_pack" || inCat === "standby"));
+          const showRecipient =
+            (isOut && outCat === "facility" && facilityPurpose !== "other" && facilityPurpose !== "messager") ||
+            (!isOut && inCat === "external");
+          if (!showProvince && !showPackagedBatch && !showRecipient) return null;
+          return (
+            <div className="grid grid-cols-3 gap-2 rounded-md border bg-muted/30 p-2">
+              {showProvince && (
+                <div>
+                  <Label className="text-[10px] uppercase text-muted-foreground">Province / Distributeur</Label>
+                  <Select value={province || "__none__"} onValueChange={(v) => setProvince(v === "__none__" ? "" : v)}>
+                    <SelectTrigger className="h-8"><SelectValue placeholder="Sélectionner…" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">—</SelectItem>
+                      {PROVINCES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {showPackagedBatch && (
+                <div>
+                  <Label className="text-[10px] uppercase text-muted-foreground">
+                    {isOut ? "Batch packagé cible" : inCat === "standby" ? "Batch packagé produit" : "Batch packagé source"}
+                  </Label>
+                  <Input
+                    value={packagedBatch}
+                    onChange={(e) => setPackagedBatch(e.target.value)}
+                    placeholder="ex : ONO-0120-03"
+                    className="h-8 font-mono text-xs"
+                  />
+                </div>
+              )}
+              {showRecipient && (
+                <div>
+                  <Label className="text-[10px] uppercase text-muted-foreground">Destinataire</Label>
+                  <Input
+                    value={recipient}
+                    onChange={(e) => setRecipient(e.target.value)}
+                    placeholder={isOut ? "PPB Labs, Nuance MJ…" : "Client externe…"}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Date</Label>
